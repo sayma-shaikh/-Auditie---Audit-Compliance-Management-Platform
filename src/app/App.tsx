@@ -40,7 +40,7 @@ import {
   FolderUp,
   MoreVertical
 } from 'lucide-react';
-import { ProjectsPage, ProjectDetailsPage, AuditAreaWorkspacePage, PersonalWorkspacePage } from '../features/projects/ProjectsPage';
+import { ProjectsPage, ProjectDetailsPage, AuditAreaWorkspacePage, PersonalWorkspacePage, MilestoneWorkspacePage } from '../features/projects/ProjectsPage';
 import { useOutsideClick } from '../hooks/useOutsideClick';
 import { TemplatesPage as TemplateAutomationPage } from '../features/templates/TemplatesPage';
 import { clsx, type ClassValue } from 'clsx';
@@ -2805,6 +2805,7 @@ export default function App() {
             <Route path="/my-work" element={<PersonalWorkspacePage />} />
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/projects/:id" element={<ProjectDetailsPage />} />
+            <Route path="/projects/:id/milestones/:milestoneId" element={<MilestoneWorkspacePage />} />
             <Route path="/projects/:id/areas/:areaId" element={<AuditAreaWorkspacePage />} />
             <Route path="/templates" element={<TemplateAutomationPage />} />
             <Route path="/repository" element={<RepositoryPage />} />

@@ -8,7 +8,7 @@ import XLSX from 'xlsx';
 import { authenticateJWT, AuthRequest } from '../../middleware/auth.middleware.ts';
 import { calculateUserPerformance } from '../../services/performance-analytics.service.ts';
 import { allChecklistTemplates, checklistTemplateByName, checklistTemplateForArea, checklistTemplateOptions, workingPaperNamesForArea } from '../../data/checklist-library.ts';
-import { getProjectMilestones, getProjectMilestoneSummary, normalizeMilestone, projectMilestoneInclude, recalculateProjectFromMilestones, seedProjectMilestones } from '../../services/review-program.service.ts';
+import { ensureMilestoneWorkspace, getProjectMilestones, getProjectMilestoneSummary, normalizeMilestone, projectMilestoneInclude, recalculateProjectFromMilestones, refreshMilestoneProgress, seedProjectMilestones } from '../../services/review-program.service.ts';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -776,6 +776,177 @@ router.get('/projects/:projectId/milestone-summary', authenticateJWT, async (req
   }
 });
 
+async function getMilestoneForAccess(milestoneId: string, req: AuthRequest) {
+  const milestone = await prisma.projectMilestone.findUnique({
+    where: { id: milestoneId },
+    include: { project: true, owner: { select: { id: true, name: true, email: true, role: true } } },
+  });
+  if (!milestone) return null;
+  if (!canManage(milestone.project, req) && milestone.ownerId !== req.user?.id) throw new Error('ACCESS_DENIED');
+  await ensureMilestoneWorkspace(prisma, milestone);
+  return prisma.projectMilestone.findUnique({
+    where: { id: milestone.id },
+    include: { ...projectMilestoneInclude, project: true },
+  });
+}
+
+async function workspacePayload(milestone: any) {
+  const workspaceType = milestone.workspaceType;
+  if (workspaceType === 'PLANNING_WORKSPACE') return prisma.planningWorkspace.findUnique({ where: { milestoneId: milestone.id } });
+  if (workspaceType === 'PROJECT_MANAGEMENT_WORKSPACE') return prisma.projectManagementWorkspace.findUnique({ where: { milestoneId: milestone.id } });
+  if (['MEETING_WORKSPACE', 'CLOSING_MEETING_WORKSPACE', 'COMMITTEE_MEETING_WORKSPACE'].includes(workspaceType)) return prisma.meetingWorkspace.findUnique({ where: { milestoneId: milestone.id } });
+  if (workspaceType === 'AREA_CHECKLIST_WORKSPACE') {
+    const workspace = await prisma.areaChecklistWorkspace.findUnique({ where: { milestoneId: milestone.id } });
+    const areas = await prisma.projectAreaAllocation.findMany({
+      where: { projectId: milestone.projectId, parentAreaId: null },
+      orderBy: { areaName: 'asc' },
+    });
+    return { ...workspace, areas };
+  }
+  if (workspaceType === 'DATA_REQUEST_WORKSPACE') return prisma.dataRequest.findMany({ where: { milestoneId: milestone.id }, orderBy: { createdAt: 'desc' } });
+  if (workspaceType === 'PROCESS_WALKTHROUGH_WORKSPACE') return prisma.processWalkthrough.findMany({ where: { milestoneId: milestone.id }, orderBy: { createdAt: 'desc' } });
+  if (workspaceType === 'RCM_WORKSPACE') return prisma.riskControlMatrixItem.findMany({ where: { milestoneId: milestone.id }, orderBy: { createdAt: 'desc' } });
+  if (workspaceType === 'SAMPLING_WORKSPACE') return prisma.samplingItem.findMany({ where: { milestoneId: milestone.id }, orderBy: { createdAt: 'desc' } });
+  if (workspaceType === 'EXECUTION_WORKSPACE') {
+    return prisma.projectAreaAllocation.findMany({
+      where: { projectId: milestone.projectId, parentAreaId: null },
+      include: { observations: { include: { capa: true } } },
+      orderBy: { areaName: 'asc' },
+    });
+  }
+  if (workspaceType === 'WEEKLY_STATUS_WORKSPACE') return prisma.weeklyStatusUpdate.findMany({ where: { milestoneId: milestone.id }, orderBy: { weekStartDate: 'desc' } });
+  if (workspaceType === 'INTERIM_REVIEW_WORKSPACE') return prisma.interimReview.findMany({ where: { milestoneId: milestone.id }, orderBy: { createdAt: 'desc' } });
+  if (workspaceType === 'QUERY_WORKSPACE') return prisma.projectQuery.findMany({ where: { projectId: milestone.projectId }, orderBy: { createdAt: 'desc' } });
+  if (workspaceType === 'REPORT_WORKSPACE') return prisma.reportVersion.findMany({ where: { milestoneId: milestone.id }, orderBy: { uploadedAt: 'desc' } });
+  if (workspaceType === 'REPORT_REVIEW_WORKSPACE') return prisma.reportReviewComment.findMany({ where: { milestoneId: milestone.id }, orderBy: { createdAt: 'desc' } });
+  if (workspaceType === 'REPORT_SUBMISSION_WORKSPACE') return prisma.reportSubmission.findMany({ where: { milestoneId: milestone.id }, orderBy: { createdAt: 'desc' } });
+  return null;
+}
+
+async function sendMilestoneDetail(milestoneId: string, req: AuthRequest, res: any) {
+  const milestone = await getMilestoneForAccess(milestoneId, req);
+  if (!milestone) return res.status(404).json({ message: 'Milestone not found' });
+  const refreshed = await refreshMilestoneProgress(prisma, milestone);
+  const latest = await prisma.projectMilestone.findUnique({ where: { id: milestone.id }, include: { ...projectMilestoneInclude, project: true } });
+  res.json({ milestone: normalizeMilestone(latest || refreshed), workspace: await workspacePayload(latest || refreshed) });
+}
+
+router.get('/project-milestones/:milestoneId', authenticateJWT, async (req: AuthRequest, res) => {
+  try {
+    await sendMilestoneDetail(req.params.milestoneId, req, res);
+  } catch (err: any) {
+    if (err.message === 'ACCESS_DENIED') return res.status(403).json({ message: 'Access denied' });
+    console.error('Project milestone detail error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+async function updateSingletonWorkspace(req: AuthRequest, res: any, modelName: 'planningWorkspace' | 'projectManagementWorkspace' | 'meetingWorkspace' | 'areaChecklistWorkspace') {
+  try {
+    const milestone = await getMilestoneForAccess(req.params.milestoneId, req);
+    if (!milestone) return res.status(404).json({ message: 'Milestone not found' });
+    const data = { ...req.body };
+    delete data.id; delete data.projectId; delete data.milestoneId; delete data.createdAt; delete data.updatedAt;
+    if (data.meetingDate !== undefined) data.meetingDate = parseDate(data.meetingDate) || null;
+    const updated = await (prisma as any)[modelName].update({ where: { milestoneId: milestone.id }, data });
+    await refreshMilestoneProgress(prisma, milestone);
+    await logProjectAction(milestone.projectId, req, 'MILESTONE_WORKSPACE_UPDATED', `${milestone.milestoneName} workspace updated.`);
+    res.json(updated);
+  } catch (err: any) {
+    if (err.message === 'ACCESS_DENIED') return res.status(403).json({ message: 'Access denied' });
+    console.error('Workspace update error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+router.patch('/milestone-workspaces/planning/:milestoneId', authenticateJWT, (req: AuthRequest, res) => updateSingletonWorkspace(req, res, 'planningWorkspace'));
+router.patch('/milestone-workspaces/project-management/:milestoneId', authenticateJWT, (req: AuthRequest, res) => updateSingletonWorkspace(req, res, 'projectManagementWorkspace'));
+router.patch('/milestone-workspaces/meeting/:milestoneId', authenticateJWT, (req: AuthRequest, res) => updateSingletonWorkspace(req, res, 'meetingWorkspace'));
+router.patch('/milestone-workspaces/area-checklist/:milestoneId', authenticateJWT, (req: AuthRequest, res) => updateSingletonWorkspace(req, res, 'areaChecklistWorkspace'));
+
+function trackerConfig(type: string) {
+  const configs: Record<string, any> = {
+    'data-requests': { model: 'dataRequest', required: ['requestTitle'], dates: ['dueDate', 'closedAt'] },
+    walkthroughs: { model: 'processWalkthrough', required: ['processName'], dates: ['walkthroughDate'] },
+    rcm: { model: 'riskControlMatrixItem', required: ['processArea', 'riskDescription', 'controlDescription'], dates: [] },
+    sampling: { model: 'samplingItem', required: ['populationName'], dates: [] },
+    weekly: { model: 'weeklyStatusUpdate', required: ['weekStartDate', 'summary'], dates: ['weekStartDate'] },
+    interim: { model: 'interimReview', required: [], dates: ['reviewDate'] },
+    reports: { model: 'reportVersion', required: ['reportType', 'version'], dates: ['uploadedAt'] },
+    'report-reviews': { model: 'reportReviewComment', required: ['comment'], dates: ['resolvedAt'] },
+    submissions: { model: 'reportSubmission', required: [], dates: ['submittedDate'] },
+  };
+  return configs[type];
+}
+
+function sanitizeTrackerData(body: any, config: any) {
+  const data = { ...body };
+  delete data.id; delete data.projectId; delete data.milestoneId; delete data.createdAt; delete data.updatedAt;
+  for (const field of config.dates) if (data[field] !== undefined) data[field] = parseDate(data[field]) || null;
+  if (data.populationSize !== undefined) data.populationSize = data.populationSize === '' ? null : Number(data.populationSize);
+  if (data.sampleSize !== undefined) data.sampleSize = data.sampleSize === '' ? null : Number(data.sampleSize);
+  if (data.gapsIdentified !== undefined) data.gapsIdentified = Number(data.gapsIdentified) || 0;
+  if (data.openPoints !== undefined) data.openPoints = Number(data.openPoints) || 0;
+  if (data.resolvedPoints !== undefined) data.resolvedPoints = Number(data.resolvedPoints) || 0;
+  if (data.selectedSamples !== undefined && typeof data.selectedSamples !== 'string') data.selectedSamples = JSON.stringify(data.selectedSamples || []);
+  return data;
+}
+
+router.post('/milestone-workspaces/:type/:milestoneId/items', authenticateJWT, async (req: AuthRequest, res) => {
+  try {
+    const config = trackerConfig(req.params.type);
+    if (!config) return res.status(404).json({ message: 'Workspace type not found' });
+    const milestone = await getMilestoneForAccess(req.params.milestoneId, req);
+    if (!milestone) return res.status(404).json({ message: 'Milestone not found' });
+    const data = sanitizeTrackerData(req.body, config);
+    for (const field of config.required) if (!data[field]) return res.status(400).json({ message: `${field} is required.` });
+    const item = await (prisma as any)[config.model].create({
+      data: { ...data, projectId: milestone.projectId, milestoneId: milestone.id, createdBy: config.model === 'dataRequest' ? req.user?.id || null : data.createdBy, submittedBy: config.model === 'weeklyStatusUpdate' ? req.user?.id || null : data.submittedBy, uploadedBy: config.model === 'reportVersion' ? req.user?.id || null : data.uploadedBy },
+    });
+    await refreshMilestoneProgress(prisma, milestone);
+    await logProjectAction(milestone.projectId, req, 'MILESTONE_WORKSPACE_ITEM_CREATED', `${milestone.milestoneName} workspace item created.`);
+    res.status(201).json(item);
+  } catch (err: any) {
+    if (err.message === 'ACCESS_DENIED') return res.status(403).json({ message: 'Access denied' });
+    console.error('Workspace item create error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.patch('/milestone-workspace-items/:type/:itemId', authenticateJWT, async (req: AuthRequest, res) => {
+  try {
+    const config = trackerConfig(req.params.type);
+    if (!config) return res.status(404).json({ message: 'Workspace type not found' });
+    const current = await (prisma as any)[config.model].findUnique({ where: { id: req.params.itemId }, include: { milestone: { include: { project: true } } } });
+    if (!current) return res.status(404).json({ message: 'Workspace item not found' });
+    if (!canManage(current.milestone.project, req) && current.milestone.ownerId !== req.user?.id) return res.status(403).json({ message: 'Access denied' });
+    const item = await (prisma as any)[config.model].update({ where: { id: current.id }, data: sanitizeTrackerData(req.body, config) });
+    await refreshMilestoneProgress(prisma, current.milestone);
+    await logProjectAction(current.projectId, req, 'MILESTONE_WORKSPACE_ITEM_UPDATED', `${current.milestone.milestoneName} workspace item updated.`);
+    res.json(item);
+  } catch (err) {
+    console.error('Workspace item update error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.delete('/milestone-workspace-items/:type/:itemId', authenticateJWT, async (req: AuthRequest, res) => {
+  try {
+    const config = trackerConfig(req.params.type);
+    if (!config) return res.status(404).json({ message: 'Workspace type not found' });
+    const current = await (prisma as any)[config.model].findUnique({ where: { id: req.params.itemId }, include: { milestone: { include: { project: true } } } });
+    if (!current) return res.status(404).json({ message: 'Workspace item not found' });
+    if (!canManage(current.milestone.project, req) && current.milestone.ownerId !== req.user?.id) return res.status(403).json({ message: 'Access denied' });
+    await (prisma as any)[config.model].delete({ where: { id: current.id } });
+    await refreshMilestoneProgress(prisma, current.milestone);
+    await logProjectAction(current.projectId, req, 'MILESTONE_WORKSPACE_ITEM_DELETED', `${current.milestone.milestoneName} workspace item deleted.`);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Workspace item delete error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 function milestoneUpdateData(body: any, current: any = {}) {
   const data: any = {};
   if (body.ownerId !== undefined) data.ownerId = body.ownerId || null;
@@ -783,7 +954,7 @@ function milestoneUpdateData(body: any, current: any = {}) {
   if (body.targetDate !== undefined) data.targetDate = parseDate(body.targetDate) || null;
   if (body.startedAt !== undefined) data.startedAt = parseDate(body.startedAt) || null;
   if (body.completedAt !== undefined) data.completedAt = parseDate(body.completedAt) || null;
-  if (body.progressPercentage !== undefined) {
+  if (body.progressPercentage !== undefined && body.allowManualProgress === true) {
     const progress = Number(body.progressPercentage);
     if (Number.isNaN(progress) || progress < 0 || progress > 100) throw new Error('Progress must be between 0 and 100.');
     data.progressPercentage = Math.round(progress);
@@ -829,12 +1000,20 @@ router.put('/project-milestones/:milestoneId', authenticateJWT, async (req: Auth
       : 'MILESTONE_UPDATED';
     await logMilestoneHistory(milestone, req, action, updated);
     await logProjectAction(milestone.projectId, req, 'MILESTONE_UPDATED', `${milestone.milestoneName} updated.`);
+    await refreshMilestoneProgress(prisma, updated);
     await recalculateProject(milestone.projectId);
-    res.json(normalizeMilestone(updated));
+    const latest = await prisma.projectMilestone.findUnique({ where: { id: milestone.id }, include: projectMilestoneInclude });
+    res.json(normalizeMilestone(latest || updated));
   } catch (err: any) {
     console.error('Milestone update error:', err);
     res.status(err.message?.includes('Progress must') ? 400 : 500).json({ message: err.message || 'Server error' });
   }
+});
+
+router.patch('/project-milestones/:milestoneId', authenticateJWT, async (req: AuthRequest, res) => {
+  req.url = `/project-milestones/${req.params.milestoneId}`;
+  req.method = 'PUT';
+  (router as any).handle(req, res);
 });
 
 router.patch('/milestones/:milestoneId', authenticateJWT, async (req: AuthRequest, res) => {

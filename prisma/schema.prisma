@@ -8,122 +8,135 @@ datasource db {
 }
 
 model User {
-  id                    String               @id @default(uuid())
-  email                 String               @unique
-  password              String
-  name                  String
-  employeeId            String?              @unique // Unique employee identifier
-  phone                 String?
-  department            String?
-  designation           String?
-  role                  String               @default("AUDITOR") // ADMIN, AUDITOR
-  status                String               @default("ACTIVE") // ACTIVE, INACTIVE, SUSPENDED, ON_LEAVE
-  profileImage          String?              // URL to profile image
-  joiningDate           DateTime?
-  lastLogin             DateTime?
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
-  
+  id           String    @id @default(uuid())
+  email        String    @unique
+  password     String
+  name         String
+  employeeId   String?   @unique // Unique employee identifier
+  phone        String?
+  department   String?
+  designation  String?
+  role         String    @default("AUDITOR") // ADMIN, AUDITOR
+  status       String    @default("ACTIVE") // ACTIVE, INACTIVE, SUSPENDED, ON_LEAVE
+  profileImage String? // URL to profile image
+  joiningDate  DateTime?
+  lastLogin    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
   // Relations
-  auditLogs             AuditLog[]
-  repositoryItems       RepositoryItem[]
-  updatedRepositoryItems RepositoryItem[]    @relation("UpdatedBy")
-  repositoryAudits      RepositoryAudit[]
-  ownedMilestones       ProjectMilestone[]   @relation("MilestoneOwner")
-  milestoneComments     ProjectMilestoneComment[]
+  auditLogs                AuditLog[]
+  repositoryItems          RepositoryItem[]
+  updatedRepositoryItems   RepositoryItem[]                 @relation("UpdatedBy")
+  repositoryAudits         RepositoryAudit[]
+  ownedMilestones          ProjectMilestone[]               @relation("MilestoneOwner")
+  milestoneComments        ProjectMilestoneComment[]
   milestoneRepositoryLinks ProjectMilestoneRepositoryLink[]
-  milestoneHistories    ProjectMilestoneHistory[]
-  googleDriveToken      GoogleDriveToken?
-  googleDriveWatches    GoogleDriveWatch[]
-  googleDriveClient     GoogleDriveClient?   // Per-user OAuth client config
-  
+  milestoneHistories       ProjectMilestoneHistory[]
+  googleDriveToken         GoogleDriveToken?
+  googleDriveWatches       GoogleDriveWatch[]
+  googleDriveClient        GoogleDriveClient? // Per-user OAuth client config
+
   // User Management Relations
-  userProjects          UserProject[]        // Projects assigned to this user
-  assignedProjects      UserProject[]        @relation("AssignedBy") // Projects assigned by this user
-  taskAssignments       TaskAssignment[]     // Tasks assigned to this user
-  assignedTasks         TaskAssignment[]     @relation("AssignedBy") // Tasks assigned by this user
-  performance           UserPerformance?     // Performance metrics
-  userActivityLogs      UserActivityLog[]    // Activity history
-  
+  userProjects     UserProject[] // Projects assigned to this user
+  assignedProjects UserProject[]     @relation("AssignedBy") // Projects assigned by this user
+  taskAssignments  TaskAssignment[] // Tasks assigned to this user
+  assignedTasks    TaskAssignment[]  @relation("AssignedBy") // Tasks assigned by this user
+  performance      UserPerformance? // Performance metrics
+  userActivityLogs UserActivityLog[] // Activity history
+
   @@index([employeeId])
   @@index([email])
 }
- 
+
 model Project {
-  id                  String               @id @default(uuid())
-  projectName         String
-  clientName          String
-  frameworks          String               // Store as comma-separated or JSON
-  natureOfProject     String?
-  assignmentPeriodCoverage String?
+  id                           String                       @id @default(uuid())
+  projectName                  String
+  clientName                   String
+  frameworks                   String // Store as comma-separated or JSON
+  natureOfProject              String?
+  assignmentPeriodCoverage     String?
   assignmentExecutionStartDate DateTime?
   assignmentExecutionEndDate   DateTime?
-  reportingDeadline   DateTime?
-  auditManagerId      String?
-  typeOfIndustry      String?
-  geographicalPresence String?
-  listingOnExchanges  String?
-  registeredOfficeAddress String?
-  corporateOfficeAddress String?
-  email               String?
-  telephone           String?
-  cinNo               String?
-  pan                 String?
-  gst                 String?
-  website             String?
-  currentStage        String?
-  createdBy           String?
-  status              String               @default("ACTIVE") // ACTIVE, COMPLETED
-  progressPercentage  Int                  @default(0)
-  documents           Document[]
-  userProjects        UserProject[]        // Users assigned to this project
-  areaAllocations     ProjectAreaAllocation[]
-  stages              ProjectStage[]
-  milestones          ProjectMilestone[]
-  queries             ProjectQuery[]
-  billingRecords      ProjectBilling[]
-  feedbackRecords     ProjectFeedback[]
-  backupRecords       ProjectBackup[]
-  activityLogs        ProjectActivityLog[]
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  reportingDeadline            DateTime?
+  auditManagerId               String?
+  typeOfIndustry               String?
+  geographicalPresence         String?
+  listingOnExchanges           String?
+  registeredOfficeAddress      String?
+  corporateOfficeAddress       String?
+  email                        String?
+  telephone                    String?
+  cinNo                        String?
+  pan                          String?
+  gst                          String?
+  website                      String?
+  currentStage                 String?
+  createdBy                    String?
+  status                       String                       @default("ACTIVE") // ACTIVE, COMPLETED
+  progressPercentage           Int                          @default(0)
+  documents                    Document[]
+  userProjects                 UserProject[] // Users assigned to this project
+  areaAllocations              ProjectAreaAllocation[]
+  stages                       ProjectStage[]
+  milestones                   ProjectMilestone[]
+  planningWorkspaces           PlanningWorkspace[]
+  projectManagementWorkspaces  ProjectManagementWorkspace[]
+  meetingWorkspaces            MeetingWorkspace[]
+  areaChecklistWorkspaces      AreaChecklistWorkspace[]
+  dataRequests                 DataRequest[]
+  processWalkthroughs          ProcessWalkthrough[]
+  riskControlMatrixItems       RiskControlMatrixItem[]
+  samplingItems                SamplingItem[]
+  weeklyStatusUpdates          WeeklyStatusUpdate[]
+  interimReviews               InterimReview[]
+  reportVersions               ReportVersion[]
+  reportReviewComments         ReportReviewComment[]
+  reportSubmissions            ReportSubmission[]
+  queries                      ProjectQuery[]
+  billingRecords               ProjectBilling[]
+  feedbackRecords              ProjectFeedback[]
+  backupRecords                ProjectBackup[]
+  activityLogs                 ProjectActivityLog[]
+  createdAt                    DateTime                     @default(now())
+  updatedAt                    DateTime                     @updatedAt
 
   @@index([auditManagerId])
   @@index([createdBy])
 }
 
 model ProjectAreaAllocation {
-  id              String   @id @default(uuid())
-  projectId       String
-  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  areaName        String
-  assignedUserId  String?
-  makerUserId     String?
-  reviewerUserId  String?
-  checklistType   String   @default("QUESTION_CHECKLIST")
+  id                  String                  @id @default(uuid())
+  projectId           String
+  project             Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  areaName            String
+  assignedUserId      String?
+  makerUserId         String?
+  reviewerUserId      String?
+  checklistType       String                  @default("QUESTION_CHECKLIST")
   checklistTemplateId String?
-  checklistTemplate ChecklistTemplate? @relation(fields: [checklistTemplateId], references: [id], onDelete: SetNull)
-  parentAreaId    String?
-  parentArea      ProjectAreaAllocation? @relation("AreaWorkingPapers", fields: [parentAreaId], references: [id], onDelete: Cascade)
-  workingPapers   ProjectAreaAllocation[] @relation("AreaWorkingPapers")
-  workpaperKind   String   @default("WORKING_PAPER")
-  workpaperType   String?
-  status          String   @default("Not Started")
-  workStatus      String   @default("NOT_STARTED")
-  reviewStatus    String   @default("NOT_REVIEWED")
-  remarks         String?
-  dueDate         DateTime?
-  checklistSnapshot String?
-  evidenceRecords String?
-  reviewComments String?
-  submittedAt     DateTime?
-  approvedAt      DateTime?
-  reworkCount     Int      @default(0)
-  checklistRows   ChecklistRow[]
-  observations     Observation[]
-  capas            CAPA[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  checklistTemplate   ChecklistTemplate?      @relation(fields: [checklistTemplateId], references: [id], onDelete: SetNull)
+  parentAreaId        String?
+  parentArea          ProjectAreaAllocation?  @relation("AreaWorkingPapers", fields: [parentAreaId], references: [id], onDelete: Cascade)
+  workingPapers       ProjectAreaAllocation[] @relation("AreaWorkingPapers")
+  workpaperKind       String                  @default("WORKING_PAPER")
+  workpaperType       String?
+  status              String                  @default("Not Started")
+  workStatus          String                  @default("NOT_STARTED")
+  reviewStatus        String                  @default("NOT_REVIEWED")
+  remarks             String?
+  dueDate             DateTime?
+  checklistSnapshot   String?
+  evidenceRecords     String?
+  reviewComments      String?
+  submittedAt         DateTime?
+  approvedAt          DateTime?
+  reworkCount         Int                     @default(0)
+  checklistRows       ChecklistRow[]
+  observations        Observation[]
+  capas               CAPA[]
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
 
   @@index([projectId])
   @@index([checklistTemplateId])
@@ -135,18 +148,18 @@ model ProjectAreaAllocation {
 }
 
 model ChecklistTemplate {
-  id          String   @id @default(uuid())
-  name        String
-  type        String
-  framework   String?
-  areaKey     String?
+  id                  String                  @id @default(uuid())
+  name                String
+  type                String
+  framework           String?
+  areaKey             String?
   evidenceRequirement String?
-  validationRules String?
-  columns     ChecklistColumn[]
-  rows        ChecklistRow[]
-  auditAreas  ProjectAreaAllocation[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  validationRules     String?
+  columns             ChecklistColumn[]
+  rows                ChecklistRow[]
+  auditAreas          ProjectAreaAllocation[]
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
 
   @@index([type])
   @@index([framework])
@@ -154,38 +167,38 @@ model ChecklistTemplate {
 }
 
 model ChecklistColumn {
-  id          String   @id @default(uuid())
-  templateId  String
-  template    ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  columnName  String
-  columnKey   String
-  columnType  String   @default("text")
-  isRequired  Boolean  @default(false)
-  sortOrder   Int      @default(0)
-  options     String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String            @id @default(uuid())
+  templateId String
+  template   ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  columnName String
+  columnKey  String
+  columnType String            @default("text")
+  isRequired Boolean           @default(false)
+  sortOrder  Int               @default(0)
+  options    String?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
 
-  @@index([templateId])
   @@unique([templateId, columnKey])
+  @@index([templateId])
 }
 
 model ChecklistRow {
-  id          String   @id @default(uuid())
-  auditAreaId String
-  auditArea   ProjectAreaAllocation @relation(fields: [auditAreaId], references: [id], onDelete: Cascade)
-  templateId  String?
-  template    ChecklistTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  rowData     String
-  status      String   @default("Pending")
-  comments    String?
+  id           String                @id @default(uuid())
+  auditAreaId  String
+  auditArea    ProjectAreaAllocation @relation(fields: [auditAreaId], references: [id], onDelete: Cascade)
+  templateId   String?
+  template     ChecklistTemplate?    @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  rowData      String
+  status       String                @default("Pending")
+  comments     String?
   observation  String?
   evidenceLink String?
-  sortOrder   Int      @default(0)
-  evidence    RowEvidence[]
+  sortOrder    Int                   @default(0)
+  evidence     RowEvidence[]
   observations Observation[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
 
   @@index([auditAreaId])
   @@index([templateId])
@@ -193,42 +206,42 @@ model ChecklistRow {
 }
 
 model RowEvidence {
-  id          String   @id @default(uuid())
-  rowId       String
-  row         ChecklistRow @relation(fields: [rowId], references: [id], onDelete: Cascade)
-  fileName    String
-  filePath    String
-  fileType    String?
-  fileSize    Int?
+  id               String       @id @default(uuid())
+  rowId            String
+  row              ChecklistRow @relation(fields: [rowId], references: [id], onDelete: Cascade)
+  fileName         String
+  filePath         String
+  fileType         String?
+  fileSize         Int?
   repositoryItemId String?
-  repositoryPath String?
-  uploadedBy  String?
-  uploadedAt  DateTime @default(now())
+  repositoryPath   String?
+  uploadedBy       String?
+  uploadedAt       DateTime     @default(now())
 
   @@index([rowId])
   @@index([uploadedBy])
 }
 
 model Observation {
-  id          String   @id @default(uuid())
-  projectId   String
-  auditAreaId String
-  auditArea   ProjectAreaAllocation @relation(fields: [auditAreaId], references: [id], onDelete: Cascade)
-  rowId       String?
-  row         ChecklistRow? @relation(fields: [rowId], references: [id], onDelete: SetNull)
-  isoClause   String?
-  department  String?
-  controlArea String?
-  description String
+  id                String                @id @default(uuid())
+  projectId         String
+  auditAreaId       String
+  auditArea         ProjectAreaAllocation @relation(fields: [auditAreaId], references: [id], onDelete: Cascade)
+  rowId             String?
+  row               ChecklistRow?         @relation(fields: [rowId], references: [id], onDelete: SetNull)
+  isoClause         String?
+  department        String?
+  controlArea       String?
+  description       String
   evidenceReference String?
-  auditorName String?
-  status      String   @default("Open")
-  reviewed    Boolean  @default(false)
-  reviewedAt  DateTime?
-  capa        CAPA?
-  createdBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  auditorName       String?
+  status            String                @default("Open")
+  reviewed          Boolean               @default(false)
+  reviewedAt        DateTime?
+  capa              CAPA?
+  createdBy         String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
   @@index([projectId])
   @@index([auditAreaId])
@@ -237,23 +250,23 @@ model Observation {
 }
 
 model CAPA {
-  id          String   @id @default(uuid())
-  projectId   String
-  auditAreaId String
-  auditArea   ProjectAreaAllocation @relation(fields: [auditAreaId], references: [id], onDelete: Cascade)
-  observationId String @unique
-  observation Observation @relation(fields: [observationId], references: [id], onDelete: Cascade)
-  riskRating  String?
-  rootCause   String?
+  id               String                @id @default(uuid())
+  projectId        String
+  auditAreaId      String
+  auditArea        ProjectAreaAllocation @relation(fields: [auditAreaId], references: [id], onDelete: Cascade)
+  observationId    String                @unique
+  observation      Observation           @relation(fields: [observationId], references: [id], onDelete: Cascade)
+  riskRating       String?
+  rootCause        String?
   correctiveAction String?
   preventiveAction String?
-  targetDate  DateTime?
-  closureEvidence String?
-  verification String?
-  closureStatus String @default("Open")
-  createdBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  targetDate       DateTime?
+  closureEvidence  String?
+  verification     String?
+  closureStatus    String                @default("Open")
+  createdBy        String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
 
   @@index([projectId])
   @@index([auditAreaId])
@@ -261,77 +274,98 @@ model CAPA {
 }
 
 model ProjectStage {
-  id              String   @id @default(uuid())
-  projectId       String
-  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  stageName       String
-  stageOrder      Int
-  status          String   @default("Pending")
-  assignedTo      String?
-  startDate       DateTime?
-  targetDate      DateTime?
-  completedDate   DateTime?
-  remarks         String?
-  documents       String?
-  comments        String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String    @id @default(uuid())
+  projectId     String
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageName     String
+  stageOrder    Int
+  status        String    @default("Pending")
+  assignedTo    String?
+  startDate     DateTime?
+  targetDate    DateTime?
+  completedDate DateTime?
+  remarks       String?
+  documents     String?
+  comments      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([projectId])
   @@index([assignedTo])
 }
 
 model ReviewProgramTemplate {
-  id          String   @id @default(uuid())
+  id          String                           @id @default(uuid())
   name        String
   framework   String?
   version     String?
   description String?
   milestones  ReviewProgramTemplateMilestone[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime                         @default(now())
+  updatedAt   DateTime                         @updatedAt
 
   @@unique([name, framework, version])
   @@index([framework])
 }
 
 model ReviewProgramTemplateMilestone {
-  id                  String   @id @default(uuid())
+  id                  String                @id @default(uuid())
   templateId          String
   template            ReviewProgramTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   sequence            Int
+  milestoneKey        String?
   milestoneName       String
   description         String?
+  workspaceType       String?
+  defaultWeight       Int                   @default(1)
+  defaultOwnerRole    String?
   defaultDurationDays Int?
   dependencySequence  Int?
-  isRequired          Boolean  @default(true)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  isRequired          Boolean               @default(true)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
 
   @@unique([templateId, sequence])
   @@index([templateId])
 }
 
 model ProjectMilestone {
-  id                  String   @id @default(uuid())
-  projectId           String
-  project             Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  sequence            Int
-  milestoneName       String
-  description         String?
-  ownerId             String?
-  owner               User?    @relation("MilestoneOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  status              String   @default("PENDING")
-  targetDate          DateTime?
-  startedAt           DateTime?
-  completedAt         DateTime?
-  progressPercentage  Int      @default(0)
-  remarks             String?
-  repositoryLinks     ProjectMilestoneRepositoryLink[]
-  comments            ProjectMilestoneComment[]
-  histories           ProjectMilestoneHistory[]
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                         String                           @id @default(uuid())
+  projectId                  String
+  project                    Project                          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sequence                   Int
+  milestoneKey               String?
+  milestoneName              String
+  description                String?
+  ownerId                    String?
+  owner                      User?                            @relation("MilestoneOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  status                     String                           @default("PENDING")
+  targetDate                 DateTime?
+  startedAt                  DateTime?
+  completedAt                DateTime?
+  progressPercentage         Int                              @default(0)
+  requiredAction             String?
+  workspaceType              String?
+  workspaceId                String?
+  remarks                    String?
+  repositoryLinks            ProjectMilestoneRepositoryLink[]
+  comments                   ProjectMilestoneComment[]
+  histories                  ProjectMilestoneHistory[]
+  planningWorkspace          PlanningWorkspace?
+  projectManagementWorkspace ProjectManagementWorkspace?
+  meetingWorkspace           MeetingWorkspace?
+  areaChecklistWorkspace     AreaChecklistWorkspace?
+  dataRequests               DataRequest[]
+  processWalkthroughs        ProcessWalkthrough[]
+  riskControlMatrixItems     RiskControlMatrixItem[]
+  samplingItems              SamplingItem[]
+  weeklyStatusUpdates        WeeklyStatusUpdate[]
+  interimReviews             InterimReview[]
+  reportVersions             ReportVersion[]
+  reportReviewComments       ReportReviewComment[]
+  reportSubmissions          ReportSubmission[]
+  createdAt                  DateTime                         @default(now())
+  updatedAt                  DateTime                         @updatedAt
 
   @@unique([projectId, sequence])
   @@index([projectId])
@@ -340,18 +374,18 @@ model ProjectMilestone {
 }
 
 model ProjectMilestoneRepositoryLink {
-  id               String   @id @default(uuid())
-  milestoneId      String
-  milestone        ProjectMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
-  repositoryItemId String?
-  repositoryItem   RepositoryItem? @relation(fields: [repositoryItemId], references: [id], onDelete: Cascade)
+  id                String           @id @default(uuid())
+  milestoneId       String
+  milestone         ProjectMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  repositoryItemId  String?
+  repositoryItem    RepositoryItem?  @relation(fields: [repositoryItemId], references: [id], onDelete: Cascade)
   googleDriveFileId String?
-  source           String   @default("repository")
-  fileName         String?
-  filePath         String?
-  linkedById       String?
-  linkedBy         User?    @relation(fields: [linkedById], references: [id], onDelete: SetNull)
-  linkedAt         DateTime @default(now())
+  source            String           @default("repository")
+  fileName          String?
+  filePath          String?
+  linkedById        String?
+  linkedBy          User?            @relation(fields: [linkedById], references: [id], onDelete: SetNull)
+  linkedAt          DateTime         @default(now())
 
   @@unique([milestoneId, repositoryItemId])
   @@index([milestoneId])
@@ -362,20 +396,20 @@ model ProjectMilestoneRepositoryLink {
 }
 
 model ProjectMilestoneComment {
-  id          String   @id @default(uuid())
+  id          String           @id @default(uuid())
   milestoneId String
   milestone   ProjectMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
   userId      String?
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user        User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
   comment     String
-  createdAt   DateTime @default(now())
+  createdAt   DateTime         @default(now())
 
   @@index([milestoneId])
   @@index([userId])
 }
 
 model ProjectMilestoneHistory {
-  id          String   @id @default(uuid())
+  id          String           @id @default(uuid())
   milestoneId String
   milestone   ProjectMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
   action      String
@@ -383,105 +417,375 @@ model ProjectMilestoneHistory {
   newStatus   String?
   oldProgress Int?
   newProgress Int?
+  oldValue    String?
+  newValue    String?
   performedBy String?
-  performer   User?    @relation(fields: [performedBy], references: [id], onDelete: SetNull)
-  performedAt DateTime @default(now())
+  performer   User?            @relation(fields: [performedBy], references: [id], onDelete: SetNull)
+  performedAt DateTime         @default(now())
 
   @@index([milestoneId])
   @@index([performedBy])
   @@index([action])
 }
 
+model PlanningWorkspace {
+  id                      String           @id @default(uuid())
+  projectId               String
+  project                 Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId             String           @unique
+  milestone               ProjectMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  scopeDefined            Boolean          @default(false)
+  objectivesDefined       Boolean          @default(false)
+  auditCriteriaDefined    Boolean          @default(false)
+  applicableStandards     String?
+  engagementLetterLinked  Boolean          @default(false)
+  ndaLinked               Boolean          @default(false)
+  auditPlanLinked         Boolean          @default(false)
+  teamAllocated           Boolean          @default(false)
+  schedulePrepared        Boolean          @default(false)
+  samplingApproachDefined Boolean          @default(false)
+  remarks                 String?
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+
+  @@index([projectId])
+}
+
+model ProjectManagementWorkspace {
+  id                       String           @id @default(uuid())
+  projectId                String
+  project                  Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId              String           @unique
+  milestone                ProjectMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  governanceOwnerId        String?
+  escalationMatrixDefined  Boolean          @default(false)
+  communicationPlanDefined Boolean          @default(false)
+  weeklyTrackingEnabled    Boolean          @default(false)
+  risksLogged              Boolean          @default(false)
+  remarks                  String?
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+
+  @@index([projectId])
+}
+
+model MeetingWorkspace {
+  id               String           @id @default(uuid())
+  projectId        String
+  project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId      String           @unique
+  milestone        ProjectMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  meetingType      String
+  meetingDate      DateTime?
+  meetingTime      String?
+  location         String?
+  agenda           String?
+  attendees        String?
+  minutesOfMeeting String?
+  actionItems      String?
+  attendanceLinked Boolean          @default(false)
+  momLinked        Boolean          @default(false)
+  completed        Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([projectId])
+  @@index([meetingType])
+}
+
+model AreaChecklistWorkspace {
+  id                    String           @id @default(uuid())
+  projectId             String
+  project               Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId           String           @unique
+  milestone             ProjectMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  generatedFromTemplate Boolean          @default(false)
+  areasAllocated        Boolean          @default(false)
+  checklistGenerated    Boolean          @default(false)
+  remarks               String?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  @@index([projectId])
+}
+
+model DataRequest {
+  id               String           @id @default(uuid())
+  projectId        String
+  project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId      String
+  milestone        ProjectMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  requestTitle     String
+  description      String?
+  assignedTo       String?
+  dueDate          DateTime?
+  status           String           @default("OPEN")
+  response         String?
+  repositoryItemId String?
+  createdBy        String?
+  createdAt        DateTime         @default(now())
+  closedAt         DateTime?
+  updatedAt        DateTime         @updatedAt
+
+  @@index([projectId])
+  @@index([milestoneId])
+  @@index([status])
+}
+
+model ProcessWalkthrough {
+  id               String           @id @default(uuid())
+  projectId        String
+  project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId      String
+  milestone        ProjectMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  processName      String
+  department       String?
+  processOwner     String?
+  walkthroughDate  DateTime?
+  status           String           @default("PENDING")
+  notes            String?
+  gapsIdentified   Int              @default(0)
+  repositoryItemId String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([projectId])
+  @@index([milestoneId])
+  @@index([status])
+}
+
+model RiskControlMatrixItem {
+  id                 String           @id @default(uuid())
+  projectId          String
+  project            Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId        String
+  milestone          ProjectMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  processArea        String
+  riskDescription    String
+  controlDescription String
+  controlOwner       String?
+  controlType        String?
+  frequency          String?
+  testingApproach    String?
+  status             String           @default("DRAFT")
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@index([projectId])
+  @@index([milestoneId])
+  @@index([status])
+}
+
+model SamplingItem {
+  id              String           @id @default(uuid())
+  projectId       String
+  project         Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId     String
+  milestone       ProjectMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  populationName  String
+  populationSize  Int?
+  sampleSize      Int?
+  samplingMethod  String?
+  selectedSamples String?
+  status          String           @default("PENDING")
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([projectId])
+  @@index([milestoneId])
+  @@index([status])
+}
+
+model WeeklyStatusUpdate {
+  id            String           @id @default(uuid())
+  projectId     String
+  project       Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId   String
+  milestone     ProjectMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  weekStartDate DateTime
+  summary       String
+  completedWork String?
+  pendingWork   String?
+  blockers      String?
+  nextSteps     String?
+  submittedBy   String?
+  submittedAt   DateTime         @default(now())
+
+  @@index([projectId])
+  @@index([milestoneId])
+  @@index([weekStartDate])
+}
+
+model InterimReview {
+  id             String           @id @default(uuid())
+  projectId      String
+  project        Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId    String
+  milestone      ProjectMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  reviewerId     String?
+  reviewDate     DateTime?
+  reviewComments String?
+  openPoints     Int              @default(0)
+  resolvedPoints Int              @default(0)
+  status         String           @default("PENDING")
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([projectId])
+  @@index([milestoneId])
+  @@index([status])
+}
+
+model ReportVersion {
+  id               String           @id @default(uuid())
+  projectId        String
+  project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId      String
+  milestone        ProjectMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  reportType       String
+  version          String
+  repositoryItemId String?
+  uploadedBy       String?
+  uploadedAt       DateTime         @default(now())
+  status           String           @default("DRAFT")
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([projectId])
+  @@index([milestoneId])
+  @@index([status])
+}
+
+model ReportReviewComment {
+  id              String           @id @default(uuid())
+  projectId       String
+  project         Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId     String
+  milestone       ProjectMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  reportVersionId String?
+  reviewerId      String?
+  comment         String
+  severity        String?
+  status          String           @default("OPEN")
+  createdAt       DateTime         @default(now())
+  resolvedAt      DateTime?
+  updatedAt       DateTime         @updatedAt
+
+  @@index([projectId])
+  @@index([milestoneId])
+  @@index([status])
+}
+
+model ReportSubmission {
+  id                    String           @id @default(uuid())
+  projectId             String
+  project               Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId           String
+  milestone             ProjectMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  reportVersionId       String?
+  submittedTo           String?
+  submittedDate         DateTime?
+  submissionMode        String?
+  acknowledgementLinked Boolean          @default(false)
+  status                String           @default("PENDING")
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  @@index([projectId])
+  @@index([milestoneId])
+  @@index([status])
+}
+
 model ProjectQuery {
-  id          String   @id @default(uuid())
-  projectId   String
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  raisedBy    String?
-  assignedTo  String?
-  queryText   String
-  priority    String   @default("Medium")
-  status      String   @default("Open")
-  dueDate     DateTime?
-  response    String?
-  createdAt   DateTime @default(now())
-  closedAt    DateTime?
-  updatedAt   DateTime @updatedAt
+  id         String    @id @default(uuid())
+  projectId  String
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  raisedBy   String?
+  assignedTo String?
+  queryText  String
+  priority   String    @default("Medium")
+  status     String    @default("Open")
+  dueDate    DateTime?
+  response   String?
+  createdAt  DateTime  @default(now())
+  closedAt   DateTime?
+  updatedAt  DateTime  @updatedAt
 
   @@index([projectId])
 }
 
 model ProjectBilling {
-  id                String   @id @default(uuid())
+  id                String    @id @default(uuid())
   projectId         String
-  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project           Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   invoiceNumber     String?
   invoiceDate       DateTime?
-  invoiceAmount     Float    @default(0)
-  taxAmount         Float    @default(0)
-  totalAmount       Float    @default(0)
-  billingStatus     String   @default("Not Billed")
+  invoiceAmount     Float     @default(0)
+  taxAmount         Float     @default(0)
+  totalAmount       Float     @default(0)
+  billingStatus     String    @default("Not Billed")
   paymentDueDate    DateTime?
-  amountReceived    Float    @default(0)
+  amountReceived    Float     @default(0)
   paymentDate       DateTime?
   paymentMode       String?
-  outstandingAmount Float    @default(0)
-  collectionStatus  String   @default("Pending")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  outstandingAmount Float     @default(0)
+  collectionStatus  String    @default("Pending")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([projectId])
 }
 
 model ProjectFeedback {
-  id                String   @id @default(uuid())
-  projectId         String
-  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  feedbackRating    Int?
-  feedbackComments  String?
-  receivedFrom      String?
-  feedbackDate      DateTime?
-  improvementNotes  String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id               String    @id @default(uuid())
+  projectId        String
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  feedbackRating   Int?
+  feedbackComments String?
+  receivedFrom     String?
+  feedbackDate     DateTime?
+  improvementNotes String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@index([projectId])
 }
 
 model ProjectBackup {
-  id                    String   @id @default(uuid())
-  projectId             String
-  project               Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  evidenceBackedUp      Boolean  @default(false)
-  reportsBackedUp       Boolean  @default(false)
-  clientDocumentsBackedUp Boolean @default(false)
-  workingPapersBackedUp Boolean  @default(false)
-  finalArchiveCompleted Boolean  @default(false)
-  backupStatus          String   @default("Pending")
-  backupLocation        String?
-  backupCompletedBy     String?
-  backupDate            DateTime?
-  remarks               String?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                      String    @id @default(uuid())
+  projectId               String
+  project                 Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  evidenceBackedUp        Boolean   @default(false)
+  reportsBackedUp         Boolean   @default(false)
+  clientDocumentsBackedUp Boolean   @default(false)
+  workingPapersBackedUp   Boolean   @default(false)
+  finalArchiveCompleted   Boolean   @default(false)
+  backupStatus            String    @default("Pending")
+  backupLocation          String?
+  backupCompletedBy       String?
+  backupDate              DateTime?
+  remarks                 String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   @@index([projectId])
 }
 
 model ProjectActivityLog {
-  id        String   @id @default(uuid())
-  actor     String?
-  action    String
-  projectId String
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  auditAreaId String?
+  id              String   @id @default(uuid())
+  actor           String?
+  action          String
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  auditAreaId     String?
   checklistItemId String?
-  actionType String?
-  oldValue String?
-  newValue String?
+  actionType      String?
+  oldValue        String?
+  newValue        String?
   performedByName String?
-  message String?
-  timestamp DateTime @default(now())
-  details   String?
+  message         String?
+  timestamp       DateTime @default(now())
+  details         String?
 
   @@index([projectId])
   @@index([auditAreaId])
@@ -491,153 +795,153 @@ model ProjectActivityLog {
 }
 
 model UserProject {
-  id              String   @id @default(uuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  projectId       String
-  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  assignedById    String
-  assignedBy      User     @relation("AssignedBy", fields: [assignedById], references: [id])
-  assignedDate    DateTime @default(now())
-  projectRole     String   // Role within the project (Lead, Member, Reviewer, etc.)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignedById String
+  assignedBy   User     @relation("AssignedBy", fields: [assignedById], references: [id])
+  assignedDate DateTime @default(now())
+  projectRole  String // Role within the project (Lead, Member, Reviewer, etc.)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
   @@unique([userId, projectId])
   @@index([userId])
   @@index([projectId])
 }
 
 model TaskAssignment {
-  id          String   @id @default(uuid())
-  taskId      String   // Reference to task (can be from Document or other source)
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String    @id @default(uuid())
+  taskId       String // Reference to task (can be from Document or other source)
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   assignedById String
-  assignedBy  User     @relation("AssignedBy", fields: [assignedById], references: [id])
-  assignedAt  DateTime @default(now())
-  dueDate     DateTime
-  status      String   @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, UNDER_REVIEW, COMPLETED, OVERDUE
-  description String?
-  priority    String   @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
-  completedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  assignedBy   User      @relation("AssignedBy", fields: [assignedById], references: [id])
+  assignedAt   DateTime  @default(now())
+  dueDate      DateTime
+  status       String    @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, UNDER_REVIEW, COMPLETED, OVERDUE
+  description  String?
+  priority     String    @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
   @@index([userId])
   @@index([taskId])
 }
 
 model UserPerformance {
-  id                  String   @id @default(uuid())
-  userId              String   @unique
-  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   // Metrics
-  tasksAssigned       Int      @default(0)
-  tasksCompleted      Int      @default(0)
-  overdueTasks        Int      @default(0)
-  avgCompletionTime   Float    @default(0) // in days
-  auditsParticipated  Int      @default(0)
-  findingsClosed      Int      @default(0)
-  productivityScore   Float    @default(0) // 0-100
-  
+  tasksAssigned      Int   @default(0)
+  tasksCompleted     Int   @default(0)
+  overdueTasks       Int   @default(0)
+  avgCompletionTime  Float @default(0) // in days
+  auditsParticipated Int   @default(0)
+  findingsClosed     Int   @default(0)
+  productivityScore  Float @default(0) // 0-100
+
   // Quality metrics
-  onTimeDeliveryRate  Float    @default(0) // 0-100
-  qualityRating       Float    @default(0) // 0-100
-  
-  lastCalculated      DateTime @default(now())
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  onTimeDeliveryRate Float @default(0) // 0-100
+  qualityRating      Float @default(0) // 0-100
+
+  lastCalculated DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model UserActivityLog {
-  id              String   @id @default(uuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  action          String   // LOGIN, LOGOUT, TASK_UPDATE, PROJECT_ASSIGNMENT, EVIDENCE_UPLOAD, APPROVAL_ACTION, PROFILE_UPDATE, etc.
-  actionDetails   String?  // JSON string with additional details
-  ipAddress       String?
-  userAgent       String?  // Browser/device info
-  
-  entityType      String?  // Type of entity affected (Task, Project, Document, etc.)
-  entityId        String?  // ID of entity affected
-  entityName      String?  // Name of entity affected
-  
-  createdAt       DateTime @default(now())
-  
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  action        String // LOGIN, LOGOUT, TASK_UPDATE, PROJECT_ASSIGNMENT, EVIDENCE_UPLOAD, APPROVAL_ACTION, PROFILE_UPDATE, etc.
+  actionDetails String? // JSON string with additional details
+  ipAddress     String?
+  userAgent     String? // Browser/device info
+
+  entityType String? // Type of entity affected (Task, Project, Document, etc.)
+  entityId   String? // ID of entity affected
+  entityName String? // Name of entity affected
+
+  createdAt DateTime @default(now())
+
   @@index([userId])
   @@index([createdAt])
   @@index([action])
 }
 
 model Document {
-  id              String      @id @default(uuid())
-  title           String
-  type            String      // Policy, Procedure, etc.
+  id               String     @id @default(uuid())
+  title            String
+  type             String // Policy, Procedure, etc.
   frameworkMapping String
-  versionNumber   Int         @default(1)
-  status          String      @default("DRAFT") // DRAFT, PENDING_REVIEW, APPROVED
-  fileUrl         String?
-  projectId       String
-  project         Project     @relation(fields: [projectId], references: [id])
-  auditLogs       AuditLog[]
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  versionNumber    Int        @default(1)
+  status           String     @default("DRAFT") // DRAFT, PENDING_REVIEW, APPROVED
+  fileUrl          String?
+  projectId        String
+  project          Project    @relation(fields: [projectId], references: [id])
+  auditLogs        AuditLog[]
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 }
 
 model AuditLog {
   id               String          @id @default(uuid())
   userId           String
   user             User            @relation(fields: [userId], references: [id])
-  actionType       String          // UPLOAD, APPROVE, REJECT, EDIT, LOGIN, CREATE_FOLDER, UPLOAD_FILE, RENAME_ITEM, DELETE_ITEM, DOWNLOAD_FILE
+  actionType       String // UPLOAD, APPROVE, REJECT, EDIT, LOGIN, CREATE_FOLDER, UPLOAD_FILE, RENAME_ITEM, DELETE_ITEM, DOWNLOAD_FILE
   timestamp        DateTime        @default(now())
   documentId       String?
   document         Document?       @relation(fields: [documentId], references: [id])
   repositoryItemId String?
   repositoryItem   RepositoryItem? @relation(fields: [repositoryItemId], references: [id])
-  details          String?         // Extra info like "Approved by Admin"
+  details          String? // Extra info like "Approved by Admin"
 }
 
 model Template {
-  id          String   @id @default(uuid())
-  title       String
-  templateName String?
-  templateType String?
-  framework   String   // ISO27001, SOC2, ITGC
-  category    String   // Policy, Procedure, Register, Form
-  description String?
-  filePath    String
-  version     Int      @default(1)
+  id                   String   @id @default(uuid())
+  title                String
+  templateName         String?
+  templateType         String?
+  framework            String // ISO27001, SOC2, ITGC
+  category             String // Policy, Procedure, Register, Form
+  description          String?
+  filePath             String
+  version              Int      @default(1)
   placeholdersDetected String?
-  placeholderMapping String?
-  status      String   @default("DRAFT")
-  createdBy   String?
-  isActive    Boolean  @default(true)
-  tags        String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  placeholderMapping   String?
+  status               String   @default("DRAFT")
+  createdBy            String?
+  isActive             Boolean  @default(true)
+  tags                 String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 model GeneratedDocument {
-  id           String   @id @default(uuid())
-  batchId      String?
-  projectId    String?
-  templateId   String
-  documentName String
+  id                  String   @id @default(uuid())
+  batchId             String?
+  projectId           String?
+  templateId          String
+  documentName        String
   documentReferenceNo String?
-  docxPath      String?
-  filePath      String
-  pdfPath       String?
-  warnings      String?
-  version       Int      @default(1)
-  generatedBy   String
-  status        String   @default("GENERATED")
-  staleWarnings String?
-  generatedAt   DateTime @default(now())
+  docxPath            String?
+  filePath            String
+  pdfPath             String?
+  warnings            String?
+  version             Int      @default(1)
+  generatedBy         String
+  status              String   @default("GENERATED")
+  staleWarnings       String?
+  generatedAt         DateTime @default(now())
 
-  batch       DocumentGenerationBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  batch DocumentGenerationBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
 
   @@index([batchId])
   @@index([projectId])
@@ -645,17 +949,17 @@ model GeneratedDocument {
 }
 
 model DocumentGenerationBatch {
-  id             String   @id @default(uuid())
-  projectId      String?
-  batchName      String
-  templateCount  Int
-  generatedCount Int      @default(0)
-  failedCount    Int      @default(0)
-  warningCount   Int      @default(0)
-  generatedBy    String
-  generatedAt    DateTime @default(now())
-  zipPath        String?
-  status         String   @default("COMPLETED")
+  id                 String              @id @default(uuid())
+  projectId          String?
+  batchName          String
+  templateCount      Int
+  generatedCount     Int                 @default(0)
+  failedCount        Int                 @default(0)
+  warningCount       Int                 @default(0)
+  generatedBy        String
+  generatedAt        DateTime            @default(now())
+  zipPath            String?
+  status             String              @default("COMPLETED")
   generatedDocuments GeneratedDocument[]
 
   @@index([projectId])
@@ -663,23 +967,23 @@ model DocumentGenerationBatch {
 }
 
 model Register {
-  id               String   @id @default(uuid())
-  projectId        String
-  registerName     String
-  registerType     String?
-  framework        String?
-  linkedAuditArea  String?
-  linkedControl    String?
-  currentVersion   Int      @default(1)
-  filePath         String
-  sheetNames       String?
-  detectedColumns  String?
-  previewRows      String?
-  status           String   @default("Draft")
-  uploadedBy       String
-  uploadedAt       DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  versions         RegisterVersion[]
+  id              String            @id @default(uuid())
+  projectId       String
+  registerName    String
+  registerType    String?
+  framework       String?
+  linkedAuditArea String?
+  linkedControl   String?
+  currentVersion  Int               @default(1)
+  filePath        String
+  sheetNames      String?
+  detectedColumns String?
+  previewRows     String?
+  status          String            @default("Draft")
+  uploadedBy      String
+  uploadedAt      DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  versions        RegisterVersion[]
 
   @@index([projectId])
   @@index([registerType])
@@ -708,34 +1012,34 @@ model CompanyProfile {
 }
 
 model RepositoryItem {
-  id          String                @id @default(uuid())
+  id String @id @default(uuid())
 
-  name        String
-  type        String
+  name String
+  type String
 
-  framework   String?               // ISO27001, SOC2, ITGC
-  source      String                @default("internal") // internal or gdrive
-  externalId  String?               @unique
+  framework  String? // ISO27001, SOC2, ITGC
+  source     String  @default("internal") // internal or gdrive
+  externalId String? @unique
 
-  parentId    String?
-  parent      RepositoryItem?       @relation("FolderChildren", fields: [parentId], references: [id])
-  children    RepositoryItem[]      @relation("FolderChildren")
+  parentId String?
+  parent   RepositoryItem?  @relation("FolderChildren", fields: [parentId], references: [id])
+  children RepositoryItem[] @relation("FolderChildren")
 
-  path        String?               // Relative filesystem path under data/repository or gdrive path
-  mimeType    String?
-  size        Int?
+  path     String? // Relative filesystem path under data/repository or gdrive path
+  mimeType String?
+  size     Int?
 
   createdById String
-  createdBy   User                  @relation(fields: [createdById], references: [id])
+  createdBy   User   @relation(fields: [createdById], references: [id])
 
   updatedById String?
-  updatedBy   User?                 @relation("UpdatedBy", fields: [updatedById], references: [id])
+  updatedBy   User?   @relation("UpdatedBy", fields: [updatedById], references: [id])
 
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  auditLogs   RepositoryAudit[]
-  logs        AuditLog[]
+  auditLogs      RepositoryAudit[]
+  logs           AuditLog[]
   milestoneLinks ProjectMilestoneRepositoryLink[]
 
   @@index([parentId])
@@ -743,19 +1047,19 @@ model RepositoryItem {
 }
 
 model RepositoryAudit {
-  id          String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  itemId      String
-  item        RepositoryItem @relation(fields: [itemId], references: [id])
+  itemId String
+  item   RepositoryItem @relation(fields: [itemId], references: [id])
 
-  userId      String
-  user        User @relation(fields: [userId], references: [id])
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
-  action      String // CREATE_FOLDER, UPLOAD_FILE, EDIT, DELETE, RENAME_ITEM, DOWNLOAD_FILE, SHARE_FILE
+  action String // CREATE_FOLDER, UPLOAD_FILE, EDIT, DELETE, RENAME_ITEM, DOWNLOAD_FILE, SHARE_FILE
 
-  details     String?
+  details String?
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 model GoogleDriveToken {
@@ -772,14 +1076,14 @@ model GoogleDriveToken {
 }
 
 model GoogleDriveWatch {
-  id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  channelId   String
-  resourceId  String
-  expiration  BigInt?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  channelId  String
+  resourceId String
+  expiration BigInt?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 // Optional per-user OAuth client configuration to support per-tenant credentials

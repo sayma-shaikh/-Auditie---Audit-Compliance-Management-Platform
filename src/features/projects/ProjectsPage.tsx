@@ -203,8 +203,12 @@ type ProjectMilestone = {
   id: string;
   projectId: string;
   sequence: number;
+  milestoneKey?: string | null;
   milestoneName: string;
   description?: string | null;
+  workspaceType?: string | null;
+  workspaceId?: string | null;
+  requiredAction?: string | null;
   ownerId?: string | null;
   owner?: ProjectUser | null;
   status: ProjectMilestoneStatus;
@@ -1469,11 +1473,7 @@ function ReviewProgramTimelineTab({ project, users, reload }: { project: ApiProj
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [ownerFilter, setOwnerFilter] = useState('All');
-  const [viewMode, setViewMode] = useState<'timeline' | 'list'>('timeline');
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
-  const [progressDrafts, setProgressDrafts] = useState<Record<string, number>>({});
   const [repositoryPicker, setRepositoryPicker] = useState<{ milestone: ProjectMilestone; mode: 'repository' | 'drive' } | null>(null);
   const [repositoryTree, setRepositoryTree] = useState<RepositoryPickerItem[]>([]);
   const [repositoryFolderId, setRepositoryFolderId] = useState<string | null>(null);
@@ -1542,14 +1542,6 @@ function ReviewProgramTimelineTab({ project, users, reload }: { project: ApiProj
     const remarks = prompt('Remarks', milestone.remarks || '');
     if (remarks === null) return;
     await updateMilestone(milestone, { remarks } as any);
-  };
-
-  const addComment = async (milestone: ProjectMilestone) => {
-    const comment = commentDrafts[milestone.id] || '';
-    if (!comment?.trim()) return;
-    await apiJson(`/api/project-milestones/${milestone.id}/comments`, { method: 'POST', body: JSON.stringify({ comment }) });
-    setCommentDrafts((current) => ({ ...current, [milestone.id]: '' }));
-    await refreshAfterAction();
   };
 
   const flattenRepositoryItems = (items: RepositoryPickerItem[]): RepositoryPickerItem[] => {
@@ -1724,7 +1716,6 @@ function ReviewProgramTimelineTab({ project, users, reload }: { project: ApiProj
     return matchesSearch && matchesStatus && matchesOwner;
   });
 
-  const allExpanded = filteredMilestones.every((item) => expanded[item.id]);
   const ownerOptions = users.filter((user) => milestones.some((milestone) => milestone.ownerId === user.id));
 
   return (
@@ -1755,8 +1746,6 @@ function ReviewProgramTimelineTab({ project, users, reload }: { project: ApiProj
               <option>Unassigned</option>
               {ownerOptions.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
             </select>
-            <button onClick={() => setViewMode(viewMode === 'timeline' ? 'list' : 'timeline')} className="rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">{viewMode === 'timeline' ? 'List View' : 'Timeline View'}</button>
-            <button onClick={() => setExpanded(Object.fromEntries(filteredMilestones.map((item) => [item.id, !allExpanded])))} className="rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">{allExpanded ? 'Collapse All' : 'Expand All'}</button>
             <button onClick={exportCsv} className="rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700"><Download className="inline h-3.5 w-3.5" /> Export</button>
             {!loading && milestones.length === 0 && <button onClick={seedMilestones} className="rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white">Generate Review Program Milestones</button>}
           </div>
@@ -1775,28 +1764,26 @@ function ReviewProgramTimelineTab({ project, users, reload }: { project: ApiProj
                 <th className="px-4 py-3">Started On</th>
                 <th className="px-4 py-3">Completed On</th>
                 <th className="px-4 py-3">Progress</th>
-                <th className="px-4 py-3">Actions</th>
+                <th className="px-4 py-3">Required Action</th>
+                <th className="px-4 py-3">Open</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={10} className="px-4 py-10 text-center font-bold text-slate-500">Loading milestones...</td></tr>
+                <tr><td colSpan={11} className="px-4 py-10 text-center font-bold text-slate-500">Loading milestones...</td></tr>
               ) : filteredMilestones.length === 0 ? (
-                <tr><td colSpan={10} className="px-4 py-10 text-center font-bold text-slate-500">No milestones match the filters.</td></tr>
+                <tr><td colSpan={11} className="px-4 py-10 text-center font-bold text-slate-500">No milestones match the filters.</td></tr>
               ) : filteredMilestones.map((milestone, index) => (
-                <React.Fragment key={milestone.id}>
-                  <tr className="h-16 hover:bg-slate-50">
+                <tr key={milestone.id} className="h-16 hover:bg-slate-50">
                     <td className="relative px-4 py-3">
-                      {viewMode === 'timeline' && <span className={cn('absolute left-6 top-0 h-full w-px', index === 0 ? 'top-8' : '', index === filteredMilestones.length - 1 ? 'h-8' : 'bg-slate-200')} />}
+                      <span className={cn('absolute left-6 top-0 h-full w-px bg-slate-200', index === 0 ? 'top-8' : '', index === filteredMilestones.length - 1 ? 'h-8' : '')} />
                       <span className="relative z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white ring-1 ring-slate-200"><MilestoneStatusIcon milestone={milestone} /></span>
                     </td>
                     <td className="px-4 py-3 font-bold text-slate-700">{milestone.sequence}</td>
                     <td className="px-4 py-3">
-                      <button onClick={() => setExpanded((current) => ({ ...current, [milestone.id]: !current[milestone.id] }))} className="flex items-center gap-2 text-left font-extrabold text-slate-950">
-                        {expanded[milestone.id] ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                        {milestone.milestoneName}
-                      </button>
+                      <p className="font-extrabold text-slate-950">{milestone.milestoneName}</p>
                       <p className="mt-1 line-clamp-1 text-xs font-semibold text-slate-500">{milestone.description}</p>
+                      <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-blue-600">{(milestone.workspaceType || 'WORKSPACE').replaceAll('_', ' ')}</p>
                     </td>
                     <td className="px-4 py-3"><span className={statusPill(milestone.isOverdue ? 'OVERDUE' : milestone.status)}>{milestone.isOverdue ? 'OVERDUE' : milestone.status}</span></td>
                     <td className="px-4 py-3 font-semibold text-slate-600">{milestone.owner?.name || userName(users, milestone.ownerId) || 'Unassigned'}</td>
@@ -1807,8 +1794,12 @@ function ReviewProgramTimelineTab({ project, users, reload }: { project: ApiProj
                       <div className="h-2 w-24 rounded bg-slate-200"><div className="h-full rounded bg-blue-600" style={{ width: `${milestone.progressPercentage || 0}%` }} /></div>
                       <p className="mt-1 text-[10px] font-bold text-slate-500">{milestone.progressPercentage || 0}%</p>
                     </td>
+                    <td className="px-4 py-3 text-xs font-bold text-slate-600">{milestone.requiredAction || 'Open milestone workspace'}</td>
                     <td className="relative px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <Link to={`/projects/${project.id}/milestones/${milestone.id}`} className="rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white">Open</Link>
                       <button onClick={() => setOpenMenuId(openMenuId === milestone.id ? null : milestone.id)} className="rounded p-2 hover:bg-slate-100"><MoreVertical className="h-4 w-4" /></button>
+                      </div>
                       {openMenuId === milestone.id && (
                         <div className="absolute right-4 z-20 w-52 rounded border border-slate-200 bg-white p-2 text-xs font-bold shadow-lg">
                           <button className="block w-full rounded px-3 py-2 text-left hover:bg-slate-50" onClick={() => runAction(milestone, 'start')}>Start Milestone</button>
@@ -1821,114 +1812,10 @@ function ReviewProgramTimelineTab({ project, users, reload }: { project: ApiProj
                           <button className="block w-full rounded px-3 py-2 text-left hover:bg-slate-50" onClick={() => addRemarks(milestone)}>Add Remarks</button>
                           <button className="block w-full rounded px-3 py-2 text-left hover:bg-slate-50" onClick={() => openMilestonePicker(milestone, 'repository').catch(console.error)}>Browse Repository</button>
                           <button className="block w-full rounded px-3 py-2 text-left hover:bg-slate-50" onClick={() => openMilestonePicker(milestone, 'drive').catch(console.error)}>Browse Google Drive</button>
-                          <button className="block w-full rounded px-3 py-2 text-left hover:bg-slate-50" onClick={() => setExpanded((current) => ({ ...current, [milestone.id]: true }))}>View History</button>
                         </div>
                       )}
                     </td>
                   </tr>
-                  {expanded[milestone.id] && (
-                    <tr>
-                      <td colSpan={10} className="bg-slate-50 px-6 py-4">
-                        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.4fr_1fr_1fr]">
-                          <div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Description</p>
-                            <p className="mt-1 text-sm font-semibold text-slate-700">{milestone.description || '-'}</p>
-                            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                              <Field label="Remarks"><textarea className={cn(textareaClass, 'min-h-24')} defaultValue={milestone.remarks || ''} onBlur={(event) => updateMilestone(milestone, { remarks: event.currentTarget.value } as any).catch(console.error)} /></Field>
-                              <div className="space-y-3">
-                                <Field label="Status">
-                                  <select className={inputClass} defaultValue={milestone.status} onChange={(event) => updateMilestone(milestone, { status: event.target.value as ProjectMilestoneStatus } as any).catch(console.error)}>
-                                    {['PENDING', 'IN_PROGRESS', 'COMPLETED', 'BLOCKED'].map((status) => <option key={status}>{status}</option>)}
-                                  </select>
-                                </Field>
-                                <div>
-                                  <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">Progress</p>
-                                  <div className="flex items-center gap-3">
-                                    <span className="text-[10px] font-bold text-slate-500">0%</span>
-                                    <input
-                                      type="range"
-                                      min={0}
-                                      max={100}
-                                      value={progressDrafts[milestone.id] ?? milestone.progressPercentage ?? 0}
-                                      onChange={(event) => setProgressDrafts((current) => ({ ...current, [milestone.id]: Number(event.target.value) }))}
-                                      onMouseUp={(event) => updateMilestone(milestone, { progressPercentage: Number((event.target as HTMLInputElement).value) } as any).catch(console.error)}
-                                      onTouchEnd={(event) => updateMilestone(milestone, { progressPercentage: Number((event.target as HTMLInputElement).value) } as any).catch(console.error)}
-                                      className="w-full accent-blue-600"
-                                    />
-                                    <span className="text-[10px] font-bold text-slate-500">100%</span>
-                                  </div>
-                                  <div className="mt-2 h-2 rounded-full bg-slate-200">
-                                    <div className="h-full rounded-full bg-blue-600" style={{ width: `${progressDrafts[milestone.id] ?? milestone.progressPercentage ?? 0}%` }} />
-                                  </div>
-                                  <p className="mt-1 text-xs font-extrabold text-slate-700">{progressDrafts[milestone.id] ?? milestone.progressPercentage ?? 0}%</p>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="mt-4 grid grid-cols-3 gap-2">
-                              <Metric label="Target Date" value={formatDate(milestone.targetDate)} />
-                              <Metric label="Started" value={formatDate(milestone.startedAt)} />
-                              <Metric label="Completed" value={formatDate(milestone.completedAt)} />
-                            </div>
-                          </div>
-                          <div className="space-y-3">
-                            <div>
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Attachments</p>
-                              <p className="mt-1 text-sm font-extrabold text-slate-800"><Paperclip className="mr-1 inline h-4 w-4" />{milestone.repositoryLinks?.length || 0} linked files</p>
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                <button type="button" onClick={() => openMilestonePicker(milestone, 'repository').catch(console.error)} className="rounded bg-slate-900 px-3 py-2 text-xs font-bold text-white">Browse Repository</button>
-                                <button type="button" onClick={() => openMilestonePicker(milestone, 'drive').catch(console.error)} className="rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">Browse Google Drive</button>
-                                <button type="button" onClick={() => alert('Upload files in the Repository tab first, then link them here.')} className="rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">Browse Device</button>
-                              </div>
-                              {(milestone.repositoryLinks || []).length === 0 ? <p className="mt-2 text-xs font-semibold text-slate-500">No repository items linked.</p> : (
-                                <div className="mt-2 space-y-2">
-                                  {(milestone.repositoryLinks || []).map((link) => (
-                                    <div key={link.id} className="rounded border border-slate-200 bg-white p-2">
-                                      <p className="font-bold text-slate-800">{link.repositoryItem?.name || link.fileName || link.id}</p>
-                                      <p className="text-[10px] font-semibold uppercase text-slate-400">{link.source === 'gdrive' ? 'Google Drive' : link.repositoryItem?.type || 'Repository'} - {formatDate(link.linkedAt)}</p>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            <div>
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">History</p>
-                              {(milestone.histories || []).slice(0, 5).map((item) => (
-                                <div key={item.id} className="mt-2 rounded border border-slate-200 bg-white p-2">
-                                  <p className="text-xs font-bold text-slate-800">{item.action.replaceAll('_', ' ')}</p>
-                                  <p className="text-[10px] font-semibold uppercase text-slate-400">{item.performer?.name || 'System'} - {formatDate(item.performedAt)}</p>
-                                </div>
-                              ))}
-                              {!(milestone.histories || []).length && <p className="mt-1 text-xs font-semibold text-slate-500">No history yet.</p>}
-                            </div>
-                          </div>
-                          <div className="space-y-3">
-                            <div>
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Comments</p>
-                              {(milestone.comments || []).length === 0 ? <p className="mt-1 text-xs font-semibold text-slate-500">No comments yet.</p> : (
-                                <div className="mt-2 max-h-56 space-y-2 overflow-auto">
-                                  {(milestone.comments || []).map((comment) => (
-                                    <div key={comment.id} className="rounded border border-slate-200 bg-white p-2">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <p className="text-xs font-extrabold text-slate-800">{comment.user?.name || 'User'}</p>
-                                        <p className="text-[10px] font-semibold uppercase text-slate-400">{formatDate(comment.createdAt)}</p>
-                                      </div>
-                                      <p className="text-xs font-semibold text-slate-700">{comment.comment}</p>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                              <textarea className={cn(textareaClass, 'mt-3 min-h-20')} value={commentDrafts[milestone.id] || ''} onChange={(event) => setCommentDrafts((current) => ({ ...current, [milestone.id]: event.target.value }))} placeholder="Write a comment..." />
-                              <div className="mt-2 flex justify-end">
-                                <button onClick={() => addComment(milestone)} className="rounded bg-slate-900 px-3 py-2 text-xs font-bold text-white">Post</button>
-                              </div>
-                            </div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Last updated: {formatDate(milestone.updatedAt)}</p>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
               ))}
             </tbody>
           </table>
@@ -4015,6 +3902,251 @@ export function PersonalWorkspacePage() {
           </div>
         </div>
       )}
+    </PageContainer>
+  );
+}
+
+const singletonWorkspaceEndpoint = (type?: string | null) => {
+  if (type === 'PLANNING_WORKSPACE') return 'planning';
+  if (type === 'PROJECT_MANAGEMENT_WORKSPACE') return 'project-management';
+  if (['MEETING_WORKSPACE', 'CLOSING_MEETING_WORKSPACE', 'COMMITTEE_MEETING_WORKSPACE'].includes(type || '')) return 'meeting';
+  if (type === 'AREA_CHECKLIST_WORKSPACE') return 'area-checklist';
+  return null;
+};
+
+const trackerWorkspaceType = (type?: string | null) => {
+  const map: Record<string, string> = {
+    DATA_REQUEST_WORKSPACE: 'data-requests',
+    PROCESS_WALKTHROUGH_WORKSPACE: 'walkthroughs',
+    RCM_WORKSPACE: 'rcm',
+    SAMPLING_WORKSPACE: 'sampling',
+    WEEKLY_STATUS_WORKSPACE: 'weekly',
+    INTERIM_REVIEW_WORKSPACE: 'interim',
+    REPORT_WORKSPACE: 'reports',
+    REPORT_REVIEW_WORKSPACE: 'report-reviews',
+    REPORT_SUBMISSION_WORKSPACE: 'submissions',
+  };
+  return type ? map[type] : null;
+};
+
+function WorkspaceBoolean({ label, checked, onChange }: { key?: React.Key; label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return (
+    <label className="flex items-center justify-between rounded border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">
+      <span>{label}</span>
+      <input type="checkbox" className="h-4 w-4 accent-blue-600" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    </label>
+  );
+}
+
+function GenericWorkspaceTable({ rows, columns, onAdd, onUpdate, onDelete }: { rows: any[]; columns: Array<{ key: string; label: string; type?: string }>; onAdd: () => void; onUpdate: (id: string, patch: any) => void; onDelete: (id: string) => void }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white">
+      <div className="flex items-center justify-between border-b border-slate-200 p-4">
+        <div>
+          <h3 className="font-extrabold text-slate-950">Workspace Tracker</h3>
+          <p className="text-xs font-semibold text-slate-500">Inline tracker data drives milestone progress.</p>
+        </div>
+        <button onClick={onAdd} className="rounded bg-slate-950 px-3 py-2 text-xs font-bold text-white"><Plus className="mr-1 inline h-4 w-4" /> Add Row</button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead className="bg-slate-50 text-left text-[10px] uppercase tracking-widest text-slate-500">
+            <tr>
+              {columns.map((column) => <th key={column.key} className="px-3 py-3">{column.label}</th>)}
+              <th className="px-3 py-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {!rows.length && <tr><td colSpan={columns.length + 1} className="px-4 py-8 text-center font-bold text-slate-500">No tracker rows yet.</td></tr>}
+            {rows.map((row) => (
+              <tr key={row.id}>
+                {columns.map((column) => (
+                  <td key={column.key} className="px-3 py-2">
+                    {column.type === 'status' ? (
+                      <select className={inputClass} value={row[column.key] || ''} onChange={(event) => onUpdate(row.id, { [column.key]: event.target.value })}>
+                        {['PENDING', 'OPEN', 'IN_PROGRESS', 'SENT_TO_CLIENT', 'RECEIVED', 'PARTIALLY_RECEIVED', 'COMPLETED', 'APPROVED', 'RESOLVED', 'CLOSED', 'BLOCKED'].map((status) => <option key={status}>{status}</option>)}
+                      </select>
+                    ) : column.type === 'date' ? (
+                      <input className={inputClass} type="date" value={row[column.key]?.slice?.(0, 10) || ''} onChange={(event) => onUpdate(row.id, { [column.key]: event.target.value || null })} />
+                    ) : (
+                      <input className={inputClass} value={row[column.key] || ''} onChange={(event) => onUpdate(row.id, { [column.key]: event.target.value })} />
+                    )}
+                  </td>
+                ))}
+                <td className="px-3 py-2"><button onClick={() => onDelete(row.id)} className="rounded bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">Delete</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+export function MilestoneWorkspacePage() {
+  const { id, milestoneId } = useParams() as { id: string; milestoneId: string };
+  const navigate = useNavigate();
+  const [detail, setDetail] = useState<{ milestone: ProjectMilestone & { project?: ApiProject }; workspace: any } | null>(null);
+  const [users, setUsers] = useState<ProjectUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const load = async () => {
+    setError('');
+    const [detailData, userData] = await Promise.all([apiJson(`/api/project-milestones/${milestoneId}`), apiJson('/api/users')]);
+    setDetail(detailData);
+    setUsers(normalizeUsers(userData));
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    load().catch((err) => setError(err.message || 'Unable to load milestone workspace')).finally(() => setLoading(false));
+  }, [milestoneId]);
+
+  const milestone = detail?.milestone;
+  const workspace = detail?.workspace;
+
+  const updateSingleton = async (patch: any) => {
+    if (!milestone) return;
+    const endpoint = singletonWorkspaceEndpoint(milestone.workspaceType);
+    if (!endpoint) return;
+    await apiJson(`/api/milestone-workspaces/${endpoint}/${milestone.id}`, { method: 'PATCH', body: JSON.stringify(patch) });
+    await load();
+  };
+
+  const updateMilestone = async (patch: any) => {
+    if (!milestone) return;
+    await apiJson(`/api/project-milestones/${milestone.id}`, { method: 'PATCH', body: JSON.stringify(patch) });
+    await load();
+  };
+
+  const trackerType = trackerWorkspaceType(milestone?.workspaceType);
+  const addTracker = async (defaults: any) => {
+    if (!milestone || !trackerType) return;
+    await apiJson(`/api/milestone-workspaces/${trackerType}/${milestone.id}/items`, { method: 'POST', body: JSON.stringify(defaults) });
+    await load();
+  };
+  const updateTracker = async (rowId: string, patch: any) => {
+    if (!trackerType) return;
+    await apiJson(`/api/milestone-workspace-items/${trackerType}/${rowId}`, { method: 'PATCH', body: JSON.stringify(patch) });
+    await load();
+  };
+  const deleteTracker = async (rowId: string) => {
+    if (!trackerType || !confirm('Delete this tracker row?')) return;
+    await apiJson(`/api/milestone-workspace-items/${trackerType}/${rowId}`, { method: 'DELETE' });
+    await load();
+  };
+
+  if (loading) return <PageContainer title="Milestone" subtitle="Loading workspace"><div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm font-bold text-slate-500">Loading milestone workspace...</div></PageContainer>;
+  if (!milestone) return <PageContainer title="Milestone" subtitle="Not found"><div className="rounded border border-rose-100 bg-rose-50 p-6 text-rose-700">{error || 'Milestone not found'}</div></PageContainer>;
+
+  const renderWorkspace = () => {
+    if (milestone.workspaceType === 'PLANNING_WORKSPACE') {
+      const checks = [
+        ['scopeDefined', 'Scope defined'],
+        ['objectivesDefined', 'Objectives defined'],
+        ['auditCriteriaDefined', 'Audit criteria defined'],
+        ['engagementLetterLinked', 'Engagement letter linked'],
+        ['ndaLinked', 'NDA linked'],
+        ['auditPlanLinked', 'Audit plan linked'],
+        ['teamAllocated', 'Team allocated'],
+        ['schedulePrepared', 'Schedule prepared'],
+        ['samplingApproachDefined', 'Sampling approach defined'],
+      ];
+      return (
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          {checks.map(([key, label]) => <WorkspaceBoolean key={key} label={label} checked={!!workspace?.[key]} onChange={(checked) => updateSingleton({ [key]: checked })} />)}
+          <Field label="Applicable Standards"><input className={inputClass} value={workspace?.applicableStandards || ''} onChange={(event) => updateSingleton({ applicableStandards: event.target.value })} /></Field>
+          <Field label="Remarks"><textarea className={textareaClass} value={workspace?.remarks || ''} onChange={(event) => updateSingleton({ remarks: event.target.value })} /></Field>
+        </div>
+      );
+    }
+    if (milestone.workspaceType === 'PROJECT_MANAGEMENT_WORKSPACE') {
+      const checks = [
+        ['escalationMatrixDefined', 'Escalation matrix'],
+        ['communicationPlanDefined', 'Communication plan'],
+        ['weeklyTrackingEnabled', 'Weekly tracking cadence'],
+        ['risksLogged', 'Risk log'],
+      ];
+      return <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">{checks.map(([key, label]) => <WorkspaceBoolean key={key} label={label} checked={!!workspace?.[key]} onChange={(checked) => updateSingleton({ [key]: checked })} />)}</div>;
+    }
+    if (['MEETING_WORKSPACE', 'CLOSING_MEETING_WORKSPACE', 'COMMITTEE_MEETING_WORKSPACE'].includes(milestone.workspaceType || '')) {
+      return (
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <Field label="Meeting Date"><input className={inputClass} type="date" value={workspace?.meetingDate?.slice?.(0, 10) || ''} onChange={(event) => updateSingleton({ meetingDate: event.target.value || null })} /></Field>
+          <Field label="Meeting Time"><input className={inputClass} value={workspace?.meetingTime || ''} onChange={(event) => updateSingleton({ meetingTime: event.target.value })} /></Field>
+          <Field label="Location"><input className={inputClass} value={workspace?.location || ''} onChange={(event) => updateSingleton({ location: event.target.value })} /></Field>
+          <Field label="Attendees"><input className={inputClass} value={workspace?.attendees || ''} onChange={(event) => updateSingleton({ attendees: event.target.value })} /></Field>
+          <Field label="Agenda"><textarea className={textareaClass} value={workspace?.agenda || ''} onChange={(event) => updateSingleton({ agenda: event.target.value })} /></Field>
+          <Field label="Minutes of Meeting"><textarea className={textareaClass} value={workspace?.minutesOfMeeting || ''} onChange={(event) => updateSingleton({ minutesOfMeeting: event.target.value })} /></Field>
+          <WorkspaceBoolean label="Attendance linked" checked={!!workspace?.attendanceLinked} onChange={(checked) => updateSingleton({ attendanceLinked: checked })} />
+          <WorkspaceBoolean label="MoM linked" checked={!!workspace?.momLinked} onChange={(checked) => updateSingleton({ momLinked: checked })} />
+          <WorkspaceBoolean label="Meeting completed" checked={!!workspace?.completed} onChange={(checked) => updateSingleton({ completed: checked })} />
+        </div>
+      );
+    }
+    if (milestone.workspaceType === 'AREA_CHECKLIST_WORKSPACE' || milestone.workspaceType === 'EXECUTION_WORKSPACE') {
+      const areas = Array.isArray(workspace) ? workspace : workspace?.areas || [];
+      return (
+        <div className="rounded-lg border border-slate-200 bg-white">
+          <div className="border-b border-slate-200 p-4"><h3 className="font-extrabold text-slate-950">{milestone.workspaceType === 'EXECUTION_WORKSPACE' ? 'Execution Summary' : 'Assignment Summary'}</h3></div>
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-slate-50 text-[10px] uppercase tracking-widest text-slate-500"><tr><th className="px-3 py-3">Area</th><th className="px-3 py-3">Maker</th><th className="px-3 py-3">Reviewer</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Open</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{areas.map((area: ProjectAreaAllocation) => <tr key={area.id}><td className="px-3 py-3 font-bold">{area.areaName}</td><td className="px-3 py-3">{(area as any).maker?.name || userName(users, area.makerUserId)}</td><td className="px-3 py-3">{(area as any).reviewer?.name || userName(users, area.reviewerUserId) || 'Default Audit Manager'}</td><td className="px-3 py-3"><span className={statusPill(area.status)}>{area.status}</span></td><td className="px-3 py-3"><Link to={`/projects/${id}/areas/${area.id}`} className="rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white">Open</Link></td></tr>)}</tbody>
+          </table>
+        </div>
+      );
+    }
+    if (milestone.workspaceType === 'QUERY_WORKSPACE') {
+      const rows = Array.isArray(workspace) ? workspace : [];
+      return <GenericWorkspaceTable rows={rows} columns={[{ key: 'queryText', label: 'Query' }, { key: 'assignedTo', label: 'Assigned To' }, { key: 'priority', label: 'Priority' }, { key: 'status', label: 'Status', type: 'status' }, { key: 'dueDate', label: 'Due Date', type: 'date' }]} onAdd={() => navigate(`/projects/${id}`)} onUpdate={() => {}} onDelete={() => {}} />;
+    }
+    if (trackerType === 'data-requests') return <GenericWorkspaceTable rows={workspace || []} columns={[{ key: 'requestTitle', label: 'Request' }, { key: 'assignedTo', label: 'Assigned To' }, { key: 'dueDate', label: 'Due Date', type: 'date' }, { key: 'status', label: 'Status', type: 'status' }, { key: 'response', label: 'Response' }]} onAdd={() => addTracker({ requestTitle: 'New data request', status: 'OPEN' })} onUpdate={updateTracker} onDelete={deleteTracker} />;
+    if (trackerType === 'walkthroughs') return <GenericWorkspaceTable rows={workspace || []} columns={[{ key: 'processName', label: 'Process' }, { key: 'department', label: 'Dept' }, { key: 'processOwner', label: 'Owner' }, { key: 'walkthroughDate', label: 'Date', type: 'date' }, { key: 'status', label: 'Status', type: 'status' }, { key: 'gapsIdentified', label: 'Gaps' }]} onAdd={() => addTracker({ processName: 'New process', status: 'PENDING' })} onUpdate={updateTracker} onDelete={deleteTracker} />;
+    if (trackerType === 'rcm') return <GenericWorkspaceTable rows={workspace || []} columns={[{ key: 'processArea', label: 'Process Area' }, { key: 'riskDescription', label: 'Risk' }, { key: 'controlDescription', label: 'Control' }, { key: 'controlOwner', label: 'Owner' }, { key: 'controlType', label: 'Type' }, { key: 'frequency', label: 'Frequency' }, { key: 'testingApproach', label: 'Testing Approach' }, { key: 'status', label: 'Status', type: 'status' }]} onAdd={() => addTracker({ processArea: 'New process', riskDescription: 'Risk', controlDescription: 'Control', status: 'DRAFT' })} onUpdate={updateTracker} onDelete={deleteTracker} />;
+    if (trackerType === 'sampling') return <GenericWorkspaceTable rows={workspace || []} columns={[{ key: 'populationName', label: 'Population' }, { key: 'populationSize', label: 'Size' }, { key: 'samplingMethod', label: 'Method' }, { key: 'sampleSize', label: 'Sample Size' }, { key: 'selectedSamples', label: 'Samples Selected' }, { key: 'status', label: 'Status', type: 'status' }]} onAdd={() => addTracker({ populationName: 'New population', status: 'PENDING' })} onUpdate={updateTracker} onDelete={deleteTracker} />;
+    if (trackerType === 'weekly') return <GenericWorkspaceTable rows={workspace || []} columns={[{ key: 'weekStartDate', label: 'Week Start', type: 'date' }, { key: 'summary', label: 'Summary' }, { key: 'completedWork', label: 'Completed' }, { key: 'pendingWork', label: 'Pending' }, { key: 'blockers', label: 'Blockers' }, { key: 'nextSteps', label: 'Next Steps' }]} onAdd={() => addTracker({ weekStartDate: new Date().toISOString().slice(0, 10), summary: 'Weekly update' })} onUpdate={updateTracker} onDelete={deleteTracker} />;
+    if (trackerType === 'interim') return <GenericWorkspaceTable rows={workspace || []} columns={[{ key: 'reviewerId', label: 'Reviewer' }, { key: 'reviewDate', label: 'Review Date', type: 'date' }, { key: 'reviewComments', label: 'Comments' }, { key: 'openPoints', label: 'Open Points' }, { key: 'resolvedPoints', label: 'Resolved' }, { key: 'status', label: 'Status', type: 'status' }]} onAdd={() => addTracker({ status: 'PENDING' })} onUpdate={updateTracker} onDelete={deleteTracker} />;
+    if (trackerType === 'reports') return <GenericWorkspaceTable rows={workspace || []} columns={[{ key: 'version', label: 'Version' }, { key: 'reportType', label: 'Type' }, { key: 'repositoryItemId', label: 'Repository Item' }, { key: 'status', label: 'Status', type: 'status' }]} onAdd={() => addTracker({ version: 'v1', reportType: milestone.milestoneName.includes('Final') ? 'FINAL' : 'DRAFT', status: 'DRAFT' })} onUpdate={updateTracker} onDelete={deleteTracker} />;
+    if (trackerType === 'report-reviews') return <GenericWorkspaceTable rows={workspace || []} columns={[{ key: 'comment', label: 'Comment' }, { key: 'severity', label: 'Severity' }, { key: 'reviewerId', label: 'Reviewer' }, { key: 'status', label: 'Status', type: 'status' }, { key: 'resolvedAt', label: 'Resolved On', type: 'date' }]} onAdd={() => addTracker({ comment: 'New review comment', status: 'OPEN' })} onUpdate={updateTracker} onDelete={deleteTracker} />;
+    if (trackerType === 'submissions') return <GenericWorkspaceTable rows={workspace || []} columns={[{ key: 'submittedTo', label: 'Submitted To' }, { key: 'submittedDate', label: 'Submitted Date', type: 'date' }, { key: 'submissionMode', label: 'Mode' }, { key: 'status', label: 'Status', type: 'status' }]} onAdd={() => addTracker({ status: 'PENDING' })} onUpdate={updateTracker} onDelete={deleteTracker} />;
+    return <div className="rounded-lg border border-slate-200 bg-white p-6 font-semibold text-slate-600">Workspace view is ready for this milestone type.</div>;
+  };
+
+  return (
+    <PageContainer
+      title={milestone.milestoneName}
+      subtitle={`${milestone.project?.projectName || 'Project'} - ${(milestone.workspaceType || 'WORKSPACE').replaceAll('_', ' ')}`}
+      actions={<button onClick={() => navigate(`/projects/${id}`)} className="rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">Project</button>}
+    >
+      {error && <div className="rounded border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</div>}
+      <div className="rounded-lg border border-slate-200 bg-white p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Milestone Workspace</p>
+            <h1 className="text-2xl font-extrabold text-slate-950">{milestone.milestoneName}</h1>
+            <p className="text-sm font-semibold text-slate-500">{milestone.description}</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+            <Metric label="Status" value={milestone.isOverdue ? 'OVERDUE' : milestone.status} />
+            <Metric label="Owner" value={milestone.owner?.name || userName(users, milestone.ownerId) || 'Unassigned'} />
+            <Metric label="Target" value={formatDate(milestone.targetDate)} />
+            <Metric label="Progress" value={`${milestone.progressPercentage || 0}%`} />
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <select className={inputClass} value={milestone.status} onChange={(event) => updateMilestone({ status: event.target.value })}>
+            {['PENDING', 'IN_PROGRESS', 'COMPLETED', 'BLOCKED'].map((status) => <option key={status}>{status}</option>)}
+          </select>
+          <input className={inputClass} type="date" value={milestone.targetDate?.slice(0, 10) || ''} onChange={(event) => updateMilestone({ targetDate: event.target.value || null })} />
+          <Link to="/repository" className="rounded bg-slate-900 px-3 py-2 text-xs font-bold text-white">Attach from Repository</Link>
+          <Link to="/repository" className="rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">Upload from Device</Link>
+          <Link to="/repository" className="rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">Get from Google Drive</Link>
+        </div>
+        <div className="mt-3 h-2 rounded-full bg-slate-200"><div className="h-full rounded-full bg-blue-600" style={{ width: `${milestone.progressPercentage || 0}%` }} /></div>
+        <p className="mt-2 text-xs font-bold text-slate-500">Required action: {milestone.requiredAction || 'Open milestone workspace'}</p>
+      </div>
+      {renderWorkspace()}
     </PageContainer>
   );
 }

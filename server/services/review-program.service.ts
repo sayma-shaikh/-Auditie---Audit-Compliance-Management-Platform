@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { iso27001ReviewProgramMilestones, iso27001ReviewProgramTemplate } from '../data/review-program-library.ts';
+import { calculateMilestoneProgress } from './milestone-progress.service.ts';
 
 type PrismaLike = PrismaClient;
 
@@ -48,7 +49,11 @@ export async function syncReviewProgramTemplate(prisma: PrismaLike) {
     where: { templateId_sequence: { templateId: template.id, sequence: milestone.sequence } },
     update: {
       milestoneName: milestone.milestoneName,
+      milestoneKey: milestone.milestoneKey,
       description: milestone.description,
+      workspaceType: milestone.workspaceType,
+      defaultWeight: milestone.defaultWeight || 1,
+      defaultOwnerRole: milestone.defaultOwnerRole || null,
       defaultDurationDays: milestone.defaultDurationDays || null,
       dependencySequence: milestone.dependencySequence || null,
       isRequired: milestone.isRequired ?? true,
@@ -56,8 +61,12 @@ export async function syncReviewProgramTemplate(prisma: PrismaLike) {
     create: {
       templateId: template.id,
       sequence: milestone.sequence,
+      milestoneKey: milestone.milestoneKey,
       milestoneName: milestone.milestoneName,
       description: milestone.description,
+      workspaceType: milestone.workspaceType,
+      defaultWeight: milestone.defaultWeight || 1,
+      defaultOwnerRole: milestone.defaultOwnerRole || null,
       defaultDurationDays: milestone.defaultDurationDays || null,
       dependencySequence: milestone.dependencySequence || null,
       isRequired: milestone.isRequired ?? true,
@@ -76,16 +85,96 @@ export async function seedProjectMilestones(prisma: PrismaLike, projectId: strin
     data: iso27001ReviewProgramMilestones.map((milestone, index) => ({
       projectId,
       sequence: milestone.sequence,
+      milestoneKey: milestone.milestoneKey,
       milestoneName: milestone.milestoneName,
       description: milestone.description,
+      workspaceType: milestone.workspaceType,
       ownerId: ownerId || null,
       status: index === 0 ? 'IN_PROGRESS' : 'PENDING',
       startedAt: index === 0 ? new Date() : null,
       progressPercentage: index === 0 ? 50 : 0,
+      requiredAction: index === 0 ? 'Complete planning requirements' : 'Open milestone workspace',
     })),
   });
+  await ensureProjectMilestoneWorkspaces(prisma, projectId);
 
   return { seeded: iso27001ReviewProgramMilestones.length, existing: 0, templateId: template.id };
+}
+
+export function definitionForMilestone(milestone: any) {
+  return iso27001ReviewProgramMilestones.find((item) => item.sequence === milestone.sequence || item.milestoneName === milestone.milestoneName);
+}
+
+export async function ensureMilestoneWorkspace(prisma: PrismaLike, milestone: any) {
+  const definition = definitionForMilestone(milestone);
+  const workspaceType = milestone.workspaceType || definition?.workspaceType || 'PROJECT_MANAGEMENT_WORKSPACE';
+  const milestoneKey = milestone.milestoneKey || definition?.milestoneKey || milestone.milestoneName?.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+  let workspaceId = milestone.workspaceId || null;
+
+  const updateMilestone = async (id: string | null) => {
+    if (milestone.workspaceType === workspaceType && milestone.milestoneKey === milestoneKey && milestone.workspaceId === id) return;
+    await prisma.projectMilestone.update({
+      where: { id: milestone.id },
+      data: { workspaceType, milestoneKey, workspaceId: id },
+    });
+  };
+
+  if (workspaceType === 'PLANNING_WORKSPACE') {
+    const workspace = await prisma.planningWorkspace.upsert({
+      where: { milestoneId: milestone.id },
+      update: {},
+      create: { projectId: milestone.projectId, milestoneId: milestone.id },
+    });
+    workspaceId = workspace.id;
+  } else if (workspaceType === 'PROJECT_MANAGEMENT_WORKSPACE') {
+    const workspace = await prisma.projectManagementWorkspace.upsert({
+      where: { milestoneId: milestone.id },
+      update: {},
+      create: { projectId: milestone.projectId, milestoneId: milestone.id },
+    });
+    workspaceId = workspace.id;
+  } else if (['MEETING_WORKSPACE', 'CLOSING_MEETING_WORKSPACE', 'COMMITTEE_MEETING_WORKSPACE'].includes(workspaceType)) {
+    const workspace = await prisma.meetingWorkspace.upsert({
+      where: { milestoneId: milestone.id },
+      update: {},
+      create: { projectId: milestone.projectId, milestoneId: milestone.id, meetingType: milestone.milestoneName },
+    });
+    workspaceId = workspace.id;
+  } else if (workspaceType === 'AREA_CHECKLIST_WORKSPACE') {
+    const workspace = await prisma.areaChecklistWorkspace.upsert({
+      where: { milestoneId: milestone.id },
+      update: {},
+      create: { projectId: milestone.projectId, milestoneId: milestone.id },
+    });
+    workspaceId = workspace.id;
+  }
+
+  await updateMilestone(workspaceId);
+  return { workspaceType, milestoneKey, workspaceId };
+}
+
+export async function ensureProjectMilestoneWorkspaces(prisma: PrismaLike, projectId: string) {
+  const milestones = await prisma.projectMilestone.findMany({ where: { projectId }, orderBy: { sequence: 'asc' } });
+  for (const milestone of milestones) {
+    await ensureMilestoneWorkspace(prisma, milestone);
+  }
+}
+
+export async function refreshMilestoneProgress(prisma: PrismaLike, milestone: any) {
+  await ensureMilestoneWorkspace(prisma, milestone);
+  const current = await prisma.projectMilestone.findUnique({ where: { id: milestone.id } });
+  if (!current) return milestone;
+  const calculated = await calculateMilestoneProgress(prisma, current);
+  const nextStatus = calculated.progressPercentage >= 100 && current.status !== 'COMPLETED' ? current.status : current.status;
+  return prisma.projectMilestone.update({
+    where: { id: current.id },
+    data: {
+      progressPercentage: current.status === 'COMPLETED' ? 100 : calculated.progressPercentage,
+      requiredAction: current.status === 'COMPLETED' ? 'Completed' : calculated.requiredAction,
+      status: nextStatus,
+    },
+    include: milestoneInclude,
+  });
 }
 
 export function normalizeMilestone(milestone: any) {
@@ -99,12 +188,17 @@ export function normalizeMilestone(milestone: any) {
 }
 
 export async function getProjectMilestones(prisma: PrismaLike, projectId: string) {
+  await ensureProjectMilestoneWorkspaces(prisma, projectId);
   const milestones = await prisma.projectMilestone.findMany({
     where: { projectId },
     include: milestoneInclude,
     orderBy: { sequence: 'asc' },
   });
-  return milestones.map(normalizeMilestone);
+  const refreshed = [];
+  for (const milestone of milestones) {
+    refreshed.push(await refreshMilestoneProgress(prisma, milestone));
+  }
+  return refreshed.map(normalizeMilestone);
 }
 
 export function summarizeMilestones(milestones: any[]) {
@@ -139,11 +233,7 @@ export function summarizeMilestones(milestones: any[]) {
 }
 
 export async function getProjectMilestoneSummary(prisma: PrismaLike, projectId: string) {
-  const milestones = await prisma.projectMilestone.findMany({
-    where: { projectId },
-    include: milestoneInclude,
-    orderBy: { sequence: 'asc' },
-  });
+  const milestones = await getProjectMilestones(prisma, projectId);
   return summarizeMilestones(milestones);
 }
 
