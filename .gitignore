@@ -1,0 +1,35 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+data/
+uploads/
+generated/
+repository/
+.sixth/
+
+# Local databases and generated Prisma artifacts
+dev.db
+prisma/dev.db
+prisma/dev.db-journal
+*.db-journal
+
+# Credentials, cookies, and local API test artifacts
+client_secret.json
+cookies.txt
+smoke-cookies.txt
+*.zip
+downloaded*.txt
+folder.json
+reg.json
+repo.json
+u.json
+del_upload.json
+structure.txt
+
+# Local manual test files
+test_upload.txt

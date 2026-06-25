@@ -1,0 +1,6 @@
+{
+  "name": "CompGuard Enterprise",
+  "description": "Internal compliance document management system for ISO, SOC 2, and ITGC audits with Maker-Checker-Admin workflow.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
