@@ -399,7 +399,7 @@ router.get('/my-reviews', authenticateJWT, async (req: AuthRequest, res) => {
   }
 });
 
-router.get('/:id/overview-dashboard', authenticateJWT, async (req: AuthRequest, res) => {
+const sendProjectOverview = async (req: AuthRequest, res) => {
   try {
     const dashboard = await getProjectOverviewDashboard(prisma, req.params.id, {
       area: req.query.area ? String(req.query.area) : undefined,
@@ -417,7 +417,10 @@ router.get('/:id/overview-dashboard', authenticateJWT, async (req: AuthRequest, 
     console.error('Project overview dashboard error:', err);
     res.status(500).json({ message: 'Server error' });
   }
-});
+};
+
+router.get('/:id/overview', authenticateJWT, sendProjectOverview);
+router.get('/:id/overview-dashboard', authenticateJWT, sendProjectOverview);
 
 router.get('/:id', authenticateJWT, async (req: AuthRequest, res) => {
   try {
