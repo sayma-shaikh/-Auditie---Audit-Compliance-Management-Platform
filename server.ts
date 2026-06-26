@@ -15,6 +15,7 @@ import generatedDocumentRoutes from './server/api/documents/generated-document.r
 import registerRoutes from './server/api/register/register.routes.ts';
 import repositoryRoutes from './server/api/repository/repository.routes.ts';
 import userRoutes from './server/api/users/user.routes.ts';
+import dashboardRoutes from './server/api/dashboard/dashboard.routes.ts';
 
 async function startServer() {
   const app = express();
@@ -44,6 +45,7 @@ async function startServer() {
   app.use('/api', registerRoutes);
   app.use('/api/repository', repositoryRoutes);
   app.use('/api', userRoutes);
+  app.use('/api', dashboardRoutes);
 
   // Vite integration
   if (process.env.NODE_ENV !== 'production') {

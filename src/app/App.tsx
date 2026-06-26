@@ -15,6 +15,7 @@ import {
   useParams
 } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
   LayoutDashboard,
   FolderKanban,
@@ -417,6 +418,250 @@ function LoginPage() {
 }
 
 function DashboardPage() {
+  const { user } = useAuth();
+  const [dashboard, setDashboard] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [filters, setFilters] = useState({
+    search: '',
+    framework: '',
+    manager: '',
+    reviewer: '',
+    status: '',
+    industry: '',
+    client: '',
+    dateRange: '',
+    health: '',
+  });
+  const [sortKey, setSortKey] = useState<'project' | 'progress' | 'health' | 'dueDate'>('progress');
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    if (!user) return;
+    if (user.role === 'AUDITOR') {
+      setLoading(false);
+      return;
+    }
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, String(value)); });
+    setLoading(true);
+    setError('');
+    fetch(`/api/dashboard/admin${params.toString() ? `?${params.toString()}` : ''}`, { credentials: 'include' })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || 'Unable to load dashboard');
+        setDashboard(data);
+      })
+      .catch((err) => setError(err.message || 'Unable to load dashboard'))
+      .finally(() => setLoading(false));
+  }, [user, filters.search, filters.framework, filters.manager, filters.reviewer, filters.status, filters.industry, filters.client, filters.dateRange, filters.health]);
+
+  if (user?.role === 'AUDITOR') {
+    return (
+      <PageContainer title="Dashboard" subtitle="Personal workspace">
+        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm font-bold text-slate-500">
+          The portfolio dashboard is available to Admins and project managers. Auditors should use My Work.
+        </div>
+      </PageContainer>
+    );
+  }
+
+  const filterOptions = dashboard?.filters || { frameworks: [], managers: [], reviewers: [], statuses: [], industries: [], clients: [], health: [] };
+  const healthData = dashboard ? [
+    { name: 'Healthy', value: dashboard.health.healthy, color: '#10b981' },
+    { name: 'Warning', value: dashboard.health.warning, color: '#f59e0b' },
+    { name: 'Critical', value: dashboard.health.critical, color: '#e11d48' },
+  ] : [];
+  const rows = dashboard?.projects?.rows || [];
+  const sortedRows = [...rows].sort((a, b) => {
+    if (sortKey === 'progress') return b.progress - a.progress;
+    if (sortKey === 'dueDate') return Number(new Date(a.dueDate || 0)) - Number(new Date(b.dueDate || 0));
+    return String(a[sortKey] || '').localeCompare(String(b[sortKey] || ''));
+  });
+  const pageSize = 8;
+  const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
+  const pagedRows = sortedRows.slice((page - 1) * pageSize, page * pageSize);
+  const healthBadge = (health: string) => cn(
+    'rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide',
+    health === 'Healthy' ? 'bg-emerald-100 text-emerald-700' : health === 'Critical' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700',
+  );
+
+  return (
+    <PageContainer title="Admin Dashboard" subtitle="Executive audit portfolio command center">
+      {error && <div className="rounded border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</div>}
+      {loading && !dashboard && <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm font-bold text-slate-500">Loading portfolio dashboard...</div>}
+      {dashboard && (
+        <>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
+            {[
+              ['Active Projects', dashboard.portfolio.activeProjects, 'bg-blue-600', '/projects'],
+              ['Projects At Risk', dashboard.portfolio.projectsAtRisk, 'bg-rose-600', '/projects'],
+              ['Overdue Tasks', dashboard.portfolio.overdueTasks, 'bg-orange-500', ''],
+              ['Portfolio Health', `${dashboard.portfolio.portfolioHealth}%`, 'bg-emerald-600', ''],
+              ['Open Reviews', dashboard.portfolio.openReviews, 'bg-amber-500', ''],
+              ['Reports Generated', dashboard.portfolio.reportsGenerated, 'bg-violet-600', ''],
+            ].map(([label, value, tone, to]) => (
+              <Link key={String(label)} to={String(to || '#')} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</p>
+                  <span className={cn('h-2.5 w-2.5 rounded-full', String(tone))} />
+                </div>
+                <p className="mt-3 text-3xl font-extrabold text-slate-950">{value}</p>
+              </Link>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                <div className="rounded-lg border border-blue-100 bg-blue-50 p-5 xl:col-span-2">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700">AI Portfolio Insight</p>
+                  <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+                    {dashboard.aiInsights.map((insight: string) => <div key={insight} className="rounded border border-blue-100 bg-white p-3 text-sm font-bold text-slate-700">{insight}</div>)}
+                  </div>
+                </div>
+                <DashboardPanel title="Review Queue">
+                  <div className="grid grid-cols-2 gap-2">
+                    <MiniMetric label="Pending" value={dashboard.reviews.totalPending} />
+                    <MiniMetric label="Returned" value={dashboard.reviews.returned} />
+                    <MiniMetric label="Overdue" value={dashboard.reviews.overdue} />
+                    <MiniMetric label="Avg Days" value={dashboard.reviews.averageReviewTime} />
+                  </div>
+                </DashboardPanel>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
+                <DashboardChart title="Portfolio Health">
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart>
+                      <Pie data={healthData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={82} paddingAngle={4}>
+                        {healthData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </DashboardChart>
+                <DashboardChart title="Projects by Status">
+                  <ResponsiveContainer width="100%" height={220}><BarChart data={dashboard.projects.byStatus}><XAxis dataKey="status" hide /><YAxis allowDecimals={false} /><Tooltip /><Bar dataKey="count" fill="#2563eb" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer>
+                </DashboardChart>
+                <DashboardChart title="Projects by Framework">
+                  <ResponsiveContainer width="100%" height={220}><BarChart data={dashboard.frameworks} layout="vertical" margin={{ left: 20 }}><XAxis type="number" allowDecimals={false} /><YAxis dataKey="framework" type="category" width={70} /><Tooltip /><Bar dataKey="count" fill="#0f766e" radius={[0, 4, 4, 0]} /></BarChart></ResponsiveContainer>
+                </DashboardChart>
+                <DashboardChart title="Risk Overview">
+                  <ResponsiveContainer width="100%" height={220}><BarChart data={dashboard.risk}><XAxis dataKey="risk" /><YAxis allowDecimals={false} /><Tooltip /><Bar dataKey="count" fill="#e11d48" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer>
+                </DashboardChart>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="flex flex-col gap-3 border-b border-slate-100 p-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-950">Active Projects</h3>
+                    <p className="text-xs font-semibold text-slate-500">Progress, health, due dates, ownership, and status across the portfolio.</p>
+                  </div>
+                  <select value={sortKey} onChange={(event) => setSortKey(event.target.value as any)} className="h-9 rounded border border-slate-200 bg-slate-50 px-3 text-xs outline-none">
+                    <option value="progress">Sort by Progress</option>
+                    <option value="project">Sort by Project</option>
+                    <option value="health">Sort by Health</option>
+                    <option value="dueDate">Sort by Due Date</option>
+                  </select>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 text-[10px] uppercase tracking-widest text-slate-500"><tr><th className="px-4 py-3">Project</th><th className="px-4 py-3">Framework</th><th className="px-4 py-3">Progress</th><th className="px-4 py-3">Health</th><th className="px-4 py-3">Due Date</th><th className="px-4 py-3">Manager</th><th className="px-4 py-3">Status</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {pagedRows.map((row: any) => (
+                        <tr key={row.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3"><Link to={`/projects/${row.id}`} className="font-bold text-slate-950 hover:text-blue-700">{row.project}</Link><p className="text-xs text-slate-500">{row.client}</p></td>
+                          <td className="px-4 py-3 text-slate-600">{row.framework}</td>
+                          <td className="px-4 py-3"><div className="flex items-center gap-2"><div className="h-2 w-24 rounded bg-slate-200"><div className="h-full rounded bg-blue-600" style={{ width: `${row.progress}%` }} /></div><span className="text-xs font-bold">{row.progress}%</span></div></td>
+                          <td className="px-4 py-3"><span className={healthBadge(row.health)}>{row.health}</span></td>
+                          <td className="px-4 py-3">{row.dueDate ? new Date(row.dueDate).toLocaleDateString() : '-'}</td>
+                          <td className="px-4 py-3">{row.manager}</td>
+                          <td className="px-4 py-3"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase text-slate-700">{row.status}</span></td>
+                        </tr>
+                      ))}
+                      {!pagedRows.length && <tr><td colSpan={7} className="px-4 py-8 text-center text-sm font-bold text-slate-500">No projects match the selected filters.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex items-center justify-between border-t border-slate-100 p-3 text-xs font-bold text-slate-600">
+                  <span>Page {page} of {totalPages}</span>
+                  <div className="flex gap-2"><button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="rounded border px-3 py-1 disabled:opacity-40">Previous</button><button disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} className="rounded border px-3 py-1 disabled:opacity-40">Next</button></div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                <DashboardPanel title="Team Workload">
+                  <div className="space-y-2">{dashboard.team.length === 0 && <EmptyLine text="No assigned workload yet." />}{dashboard.team.slice(0, 8).map((member: any) => <div key={member.userId} className="rounded border border-slate-100 p-2"><div className="flex justify-between text-xs font-bold"><span>{member.name}</span><span>{member.status}</span></div><div className="mt-2 h-2 rounded bg-slate-200"><div className="h-full rounded bg-blue-600" style={{ width: `${member.workloadPercent}%` }} /></div><p className="mt-1 text-[10px] font-semibold text-slate-500">{member.assignedAreas} areas · {member.checklistRows} rows · {member.reviewsPending} reviews</p></div>)}</div>
+                </DashboardPanel>
+                <DashboardPanel title="Upcoming Deadlines">
+                  <div className="space-y-2">{dashboard.deadlines.length === 0 && <EmptyLine text="No upcoming deadlines." />}{dashboard.deadlines.map((item: any, index: number) => <Link to={`/projects/${item.projectId}`} key={`${item.type}-${index}`} className="block rounded border border-slate-100 p-2 hover:border-blue-300"><p className="text-xs font-bold text-slate-900">{item.title}</p><p className="text-[10px] font-semibold text-slate-500">{item.type} · {item.project} · {new Date(item.dueDate).toLocaleDateString()}</p></Link>)}</div>
+                </DashboardPanel>
+                <DashboardPanel title="Observation Summary">
+                  <div className="grid grid-cols-2 gap-2"><MiniMetric label="Critical" value={dashboard.observations.critical} /><MiniMetric label="High" value={dashboard.observations.high} /><MiniMetric label="Medium" value={dashboard.observations.medium} /><MiniMetric label="Low" value={dashboard.observations.low} /><MiniMetric label="Closed" value={dashboard.observations.closed} /><MiniMetric label="Pending" value={dashboard.observations.pendingReview} /></div>
+                </DashboardPanel>
+              </div>
+            </div>
+
+            <aside className="space-y-4">
+              <DashboardPanel title="Project Filters">
+                <div className="space-y-2">
+                  <input value={filters.search} onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, search: e.target.value })); }} placeholder="Search portfolio..." className="h-9 w-full rounded border border-slate-200 bg-slate-50 px-3 text-xs outline-none" />
+                  <FilterSelect label="Framework" value={filters.framework} options={filterOptions.frameworks} onChange={(value) => { setPage(1); setFilters((f) => ({ ...f, framework: value })); }} />
+                  <FilterSelect label="Project Manager" value={filters.manager} options={filterOptions.managers.map((m: any) => ({ label: m.name, value: m.id }))} onChange={(value) => { setPage(1); setFilters((f) => ({ ...f, manager: value })); }} />
+                  <FilterSelect label="Reviewer" value={filters.reviewer} options={filterOptions.reviewers.map((m: any) => ({ label: m.name, value: m.id }))} onChange={(value) => { setPage(1); setFilters((f) => ({ ...f, reviewer: value })); }} />
+                  <FilterSelect label="Status" value={filters.status} options={filterOptions.statuses} onChange={(value) => { setPage(1); setFilters((f) => ({ ...f, status: value })); }} />
+                  <FilterSelect label="Industry" value={filters.industry} options={filterOptions.industries} onChange={(value) => { setPage(1); setFilters((f) => ({ ...f, industry: value })); }} />
+                  <FilterSelect label="Client" value={filters.client} options={filterOptions.clients} onChange={(value) => { setPage(1); setFilters((f) => ({ ...f, client: value })); }} />
+                  <FilterSelect label="Date Range" value={filters.dateRange} options={[{ label: 'Overdue', value: 'overdue' }, { label: 'Next 7 days', value: 'next7' }, { label: 'Next 30 days', value: 'next30' }]} onChange={(value) => { setPage(1); setFilters((f) => ({ ...f, dateRange: value })); }} />
+                  <FilterSelect label="Health" value={filters.health} options={filterOptions.health} onChange={(value) => { setPage(1); setFilters((f) => ({ ...f, health: value })); }} />
+                  <button onClick={() => { setPage(1); setFilters({ search: '', framework: '', manager: '', reviewer: '', status: '', industry: '', client: '', dateRange: '', health: '' }); }} className="h-9 w-full rounded border border-slate-200 bg-slate-100 px-3 text-xs font-bold text-slate-700 hover:bg-slate-200">Clear Filters</button>
+                  {loading && <p className="rounded bg-slate-50 p-2 text-center text-[10px] font-bold uppercase tracking-widest text-slate-400">Refreshing</p>}
+                </div>
+              </DashboardPanel>
+              <DashboardPanel title="Recent Activity">
+                <div className="space-y-3">{dashboard.activity.length === 0 && <EmptyLine text="No recent activity." />}{dashboard.activity.slice(0, 12).map((log: any) => <div key={log.id} className="flex gap-3"><div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-slate-50 text-[10px] font-bold text-slate-600"><History className="h-3.5 w-3.5" /></div><div><p className="text-xs font-semibold text-slate-800">{log.message}</p><p className="text-[10px] font-semibold text-slate-400">{log.user} · {new Date(log.createdAt).toLocaleString()} · {log.document}</p></div></div>)}</div>
+              </DashboardPanel>
+            </aside>
+          </div>
+        </>
+      )}
+    </PageContainer>
+  );
+}
+
+function DashboardChart({ title, children }: { title: string; children: React.ReactNode }) {
+  return <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"><h3 className="mb-3 text-sm font-extrabold text-slate-950">{title}</h3>{children}</div>;
+}
+
+function DashboardPanel({ title, children }: { title: string; children: React.ReactNode }) {
+  return <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"><h3 className="mb-3 text-sm font-extrabold text-slate-950">{title}</h3>{children}</div>;
+}
+
+function MiniMetric({ label, value }: { label: string; value: React.ReactNode }) {
+  return <div className="rounded border border-slate-100 bg-slate-50 p-2"><p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</p><p className="mt-1 text-lg font-extrabold text-slate-950">{value}</p></div>;
+}
+
+function EmptyLine({ text }: { text: string }) {
+  return <p className="rounded border border-dashed border-slate-200 p-3 text-center text-xs font-bold text-slate-400">{text}</p>;
+}
+
+function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: Array<string | { label: string; value: string }>; onChange: (value: string) => void }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="h-9 w-full rounded border border-slate-200 bg-slate-50 px-3 text-xs outline-none">
+        <option value="">All</option>
+        {options.map((option) => {
+          const normalized = typeof option === 'string' ? { label: option, value: option } : option;
+          return <option key={normalized.value} value={normalized.value}>{normalized.label}</option>;
+        })}
+      </select>
+    </label>
+  );
+}
+
+function LegacyDashboardPage() {
   const { user } = useAuth();
   const [stats, setStats] = useState<any>(null);
   const [recentLogs, setRecentLogs] = useState<any[]>([]);
