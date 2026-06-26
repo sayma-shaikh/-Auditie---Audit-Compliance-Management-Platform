@@ -169,8 +169,6 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
   let questionPending = 0;
   let questionNonCompliant = 0;
   let questionNotApplicable = 0;
-  let questionMissingEvidence = 0;
-  let questionEvidence = 0;
   for (const area of filteredAreas) {
     const areasForSnapshot = area.workpaperKind === 'AREA_GROUP' ? area.workingPapers || [] : [area];
     for (const itemArea of areasForSnapshot) {
@@ -182,9 +180,6 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
         if (bucket === 'pending') questionPending += 1;
         if (bucket === 'nonCompliant') questionNonCompliant += 1;
         if (bucket === 'notApplicable') questionNotApplicable += 1;
-        const evidenceCount = questionEvidenceCount(item);
-        questionEvidence += evidenceCount;
-        if (!evidenceCount && bucket !== 'notApplicable') questionMissingEvidence += 1;
       }
     }
   }
@@ -193,19 +188,12 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
   const tablePending = allAreaRows.filter((row) => rowStatusBucket(row.status) === 'pending').length;
   const tableNonCompliant = allAreaRows.filter((row) => rowStatusBucket(row.status) === 'nonCompliant').length;
   const tableNotApplicable = allAreaRows.filter((row) => rowStatusBucket(row.status) === 'notApplicable').length;
-  const tableEvidence = allAreaRows.reduce((sum, row) => sum + (row.evidence?.length || 0) + (row.evidenceLink ? 1 : 0), 0);
-  const tableMissingEvidence = allAreaRows.filter((row) => !(row.evidence?.length || row.evidenceLink) && rowStatusBucket(row.status) !== 'notApplicable').length;
-
   const checklistTotal = allAreaRows.length + questionTotal;
   const checklistCompleted = tableCompleted + questionCompleted;
   const checklistPending = tablePending + questionPending;
   const nonCompliantRows = tableNonCompliant + questionNonCompliant;
   const notApplicableRows = tableNotApplicable + questionNotApplicable;
-  const missingEvidenceRows = tableMissingEvidence + questionMissingEvidence;
   const checklistProgress = percent(checklistCompleted, checklistTotal);
-  const evidenceTotal = tableEvidence + questionEvidence;
-  const evidenceProgress = checklistTotal ? percent(checklistTotal - missingEvidenceRows, checklistTotal) : 0;
-
   const observationOpen = allAreaObservations.filter((item) => isOpenStatus(item.status)).length;
   const observationClosed = allAreaObservations.filter((item) => isClosedStatus(item.status)).length;
   const observationProgress = allAreaObservations.length ? percent(observationClosed, allAreaObservations.length) : 100;
@@ -239,19 +227,29 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
   const reviewPending = filteredAreas.filter((area) => area.reviewStatus === 'AWAITING_REVIEW').length;
   const reviewReturned = filteredAreas.filter((area) => area.reviewStatus === 'REWORK_REQUIRED').length;
   const reviewApproved = filteredAreas.filter((area) => area.reviewStatus === 'APPROVED').length;
-  const evidenceExpected = Math.max(checklistTotal - notApplicableRows, 0);
-  const evidenceLinked = Math.min(evidenceTotal, evidenceExpected || evidenceTotal);
-  const evidenceMissing = Math.max(evidenceExpected - evidenceLinked, 0);
-  const evidenceCompletion = percent(evidenceLinked, evidenceExpected);
+  const rowEvidenceRecords = allAreaRows.flatMap((row) => row.evidence || []);
+  const legacyEvidenceRecords = filteredAreas.flatMap((area) => {
+    const areasForEvidence = area.workpaperKind === 'AREA_GROUP' ? area.workingPapers || [] : [area];
+    return areasForEvidence.flatMap((itemArea: any) => safeJsonArray(itemArea.evidenceRecords));
+  });
+  const evidenceReview = {
+    pending: rowEvidenceRecords.filter((item) => item.reviewStatus === 'PENDING_REVIEW').length
+      + legacyEvidenceRecords.filter((item) => (item.reviewStatus || 'PENDING_REVIEW') === 'PENDING_REVIEW').length,
+    approved: rowEvidenceRecords.filter((item) => item.reviewStatus === 'APPROVED').length
+      + legacyEvidenceRecords.filter((item) => item.reviewStatus === 'APPROVED').length,
+    returned: rowEvidenceRecords.filter((item) => item.reviewStatus === 'RETURNED').length
+      + legacyEvidenceRecords.filter((item) => item.reviewStatus === 'RETURNED').length,
+  };
   const healthScore = Math.round(
     (milestoneProgress * 0.35)
     + (Math.max(0, 100 - (overdueItems * 15)) * 0.20)
     + (percent(reviewApproved, reviewPending + reviewReturned + reviewApproved) * 0.15)
     + (Math.max(0, 100 - (highRiskOpen * 25)) * 0.15)
-    + (evidenceCompletion * 0.15),
+    + (Math.max(0, 100 - ((evidenceReview.pending + evidenceReview.returned) * 10)) * 0.15),
   );
   const healthReasons: string[] = [];
-  if (evidenceMissing) healthReasons.push(`${evidenceMissing} expected evidence item(s) missing`);
+  if (evidenceReview.pending) healthReasons.push(`${evidenceReview.pending} evidence item(s) pending reviewer validation`);
+  if (evidenceReview.returned) healthReasons.push(`${evidenceReview.returned} evidence item(s) returned`);
   if (highRiskOpen) healthReasons.push(`${highRiskOpen} high-risk observations open`);
   if (milestoneOverdue) healthReasons.push(`${milestoneOverdue} milestone(s) delayed`);
   if (capaOverdue) healthReasons.push(`${capaOverdue} CAPA item(s) overdue`);
@@ -364,8 +362,8 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
     },
     {
       label: 'Evidence',
-      state: healthTone(evidenceMissing > 5 ? 'red' : evidenceMissing > 0 ? 'amber' : 'green'),
-      value: evidenceMissing ? `${evidenceMissing} missing` : 'Complete',
+      state: healthTone(evidenceReview.returned ? 'red' : evidenceReview.pending ? 'amber' : 'green'),
+      value: evidenceReview.returned ? `${evidenceReview.returned} returned` : evidenceReview.pending ? `${evidenceReview.pending} pending review` : 'Reviewed',
     },
     {
       label: 'Risk',
@@ -392,9 +390,8 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
     ...areas
       .filter((area) => area.status === 'Rework Required')
       .map((area) => ({ severity: 'critical', type: 'Returned Work', message: `${area.name} was returned for rework`, href: `/projects/${project.id}/areas/${area.areaId}`, dueDate: area.dueDate })),
-    ...areas
-      .filter((area) => area.checklistRows > 0 && area.evidenceCount < area.checklistRows)
-      .map((area) => ({ severity: area.evidenceCount === 0 ? 'critical' : 'warning', type: 'Evidence', message: `${area.name} has missing evidence`, href: `/projects/${project.id}/areas/${area.areaId}`, dueDate: area.dueDate })),
+    ...(evidenceReview.pending ? [{ severity: 'warning', type: 'Evidence Review', message: `${evidenceReview.pending} evidence item(s) need reviewer validation`, href: `/projects/${project.id}?tab=Repository&reviewStatus=PENDING_REVIEW`, dueDate: null }] : []),
+    ...(evidenceReview.returned ? [{ severity: 'critical', type: 'Evidence Review', message: `${evidenceReview.returned} evidence item(s) were returned`, href: `/projects/${project.id}?tab=Repository&reviewStatus=RETURNED`, dueDate: null }] : []),
     ...(highRiskOpen ? [{ severity: 'critical', type: 'Observation', message: `${highRiskOpen} high-risk observation(s) are open`, href: `/projects/${project.id}`, dueDate: null }] : []),
     ...uniqueCapas
       .filter((capa: any) => capa.targetDate && new Date(capa.targetDate) < today && !isClosedStatus(capa.closureStatus))
@@ -468,11 +465,7 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
         high: bySeverity.high,
         critical: allAreaObservations.filter((observation) => normalize(observation.capa?.riskRating || observation.status).includes('critical')).length,
       },
-      evidence: {
-        expected: evidenceExpected,
-        linked: evidenceLinked,
-        missing: evidenceMissing,
-      },
+      evidenceReview,
       reviews: {
         pending: reviewPending,
         returned: reviewReturned,
@@ -490,7 +483,6 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
       completedAreas: areas.filter((area) => area.status === 'Completed').length,
       areasUnderReview: areas.filter((area) => area.status === 'Awaiting Review').length,
       pendingChecklistRows: checklistPending,
-      evidenceLinked,
       observationsOpen: observationOpen,
       observationsClosed: observationClosed,
       highRiskObservations: bySeverity.high,
@@ -508,7 +500,6 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
       nonCompliantRows,
       notApplicableRows,
       observationsCreated: allAreaObservations.length,
-      evidenceMissing: missingEvidenceRows,
       completionPercent: checklistProgress,
       statusDistribution: [
         { label: 'Completed', value: checklistCompleted },
@@ -529,6 +520,7 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
       bySeverity,
       byArea: areas.map((area) => ({ area: area.name, count: area.observations })).filter((item) => item.count),
     },
+    evidenceReview,
     capa: {
       total: uniqueCapas.length,
       open: capaOpen,
@@ -536,18 +528,6 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
       overdue: capaOverdue,
       pendingVerification: uniqueCapas.filter((capa: any) => !capa.verification && !isClosedStatus(capa.closureStatus)).length,
       closurePercent: capaProgress,
-    },
-    evidence: {
-      totalLinked: evidenceTotal,
-      repositoryFiles,
-      deviceUploads: evidenceTotal - googleDriveFiles,
-      googleDriveFiles,
-      linkedEvidence: evidenceTotal,
-      missingEvidenceRows,
-      observationsMissingEvidence: allAreaObservations.filter((item) => !item.evidenceReference).length,
-      capaMissingEvidence: uniqueCapas.filter((capa: any) => !capa.closureEvidence).length,
-      folders: repositoryFolders,
-      recentFiles: recentRepository,
     },
     queries: {
       total: filteredQueries.length,
@@ -596,7 +576,6 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
       files: repositoryFiles,
       recentlyAdded: recentRepository.length,
       storageUsed: recentRepository.reduce((sum: number, item) => sum + (item.size || 0), 0),
-      evidenceLinked: evidenceTotal,
       recentFiles: recentRepository,
     },
     frameworkCoverage: [],

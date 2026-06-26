@@ -337,6 +337,8 @@ type ApiProject = {
   frameworks: string;
   natureOfProject?: string | null;
   assignmentPeriodCoverage?: string | null;
+  assignmentPeriodStartDate?: string | null;
+  assignmentPeriodEndDate?: string | null;
   assignmentExecutionStartDate?: string | null;
   assignmentExecutionEndDate?: string | null;
   reportingDeadline?: string | null;
@@ -378,16 +380,16 @@ type OverviewDashboard = {
     auditAreas: { total: number; completed: number; inReview: number; pending: number };
     milestones: { total: number; completed: number; active: number; pending: number };
     observations: { open: number; closed: number; high: number; critical: number };
-    evidence: { expected: number; linked: number; missing: number };
+    evidenceReview: { pending: number; approved: number; returned: number };
     reviews: { pending: number; returned: number; approved: number };
     capa: { open: number; closed: number; overdue: number };
   };
   kpis: Record<string, number>;
-  checklists: { totalRows: number; completedRows: number; pendingRows: number; nonCompliantRows: number; notApplicableRows: number; observationsCreated: number; evidenceMissing: number; completionPercent: number; statusDistribution: Array<{ label: string; value: number }> };
+  checklists: { totalRows: number; completedRows: number; pendingRows: number; nonCompliantRows: number; notApplicableRows: number; observationsCreated: number; completionPercent: number; statusDistribution: Array<{ label: string; value: number }> };
   areas: Array<{ areaId: string; name: string; maker?: string | null; reviewer?: string | null; progress: number; status: string; dueDate?: string | null; checklistRows: number; completedRows: number; pendingRows: number; observations: number; openObservations: number; evidenceCount: number }>;
   observations: { total: number; open: number; closed: number; rejected: number; returned: number; pendingReview: number; withoutCapa: number; bySeverity: { high: number; medium: number; low: number }; byArea: Array<{ area: string; count: number }> };
   capa: { total: number; open: number; closed: number; overdue: number; pendingVerification: number; closurePercent: number };
-  evidence: { totalLinked: number; repositoryFiles: number; deviceUploads: number; googleDriveFiles: number; linkedEvidence: number; missingEvidenceRows: number; observationsMissingEvidence: number; capaMissingEvidence: number; folders: number; recentFiles: Array<{ id: string; name: string; source: string; size?: number | null; createdAt: string }> };
+  evidenceReview: { pending: number; approved: number; returned: number };
   queries: { total: number; open: number; closed: number; overdue: number; pendingClientResponse: number; pendingAuditorResponse: number };
   milestones: { total: number; completed: number; inProgress: number; pending: number; overdue: number; current?: string | null; timeline?: Array<{ id: string; name: string; status: string; dueDate?: string | null; isCurrent: boolean; isCompleted: boolean; isOverdue: boolean }>; rows: Array<{ id: string; milestone: string; owner?: string | null; status: string; dueDate?: string | null; started?: string | null; completed?: string | null; progress: number; pendingActions: string; reviewStatus: string; repository: number }> };
   team: Array<{ userId: string; name: string; role: string; assignedAreas: number; checklistRows: number; completedRows: number; pendingRows: number; pendingReviews: number; pendingTasks?: number; observationsCreated: number; overdueItems: number; workloadPercent: number }>;
@@ -420,6 +422,8 @@ type ProjectFormState = {
   website: string;
   natureOfProject: string;
   assignmentPeriodCoverage: string;
+  assignmentPeriodStartDate: string;
+  assignmentPeriodEndDate: string;
   assignmentExecutionStartDate: string;
   assignmentExecutionEndDate: string;
   reportingDeadline: string;
@@ -475,7 +479,9 @@ const emptyForm: ProjectFormState = {
   gst: '',
   website: '',
   natureOfProject: 'ISO 27001 ISMS',
-  assignmentPeriodCoverage: 'February - March 2026',
+  assignmentPeriodCoverage: '',
+  assignmentPeriodStartDate: '',
+  assignmentPeriodEndDate: '',
   assignmentExecutionStartDate: '',
   assignmentExecutionEndDate: '',
   reportingDeadline: '',
@@ -500,6 +506,8 @@ function projectToForm(project: ApiProject): ProjectFormState {
     website: project.website || '',
     natureOfProject: project.natureOfProject || project.frameworks || 'ISO 27001 ISMS',
     assignmentPeriodCoverage: project.assignmentPeriodCoverage || '',
+    assignmentPeriodStartDate: project.assignmentPeriodStartDate?.slice(0, 10) || '',
+    assignmentPeriodEndDate: project.assignmentPeriodEndDate?.slice(0, 10) || '',
     assignmentExecutionStartDate: project.assignmentExecutionStartDate?.slice(0, 10) || '',
     assignmentExecutionEndDate: project.assignmentExecutionEndDate?.slice(0, 10) || '',
     reportingDeadline: project.reportingDeadline?.slice(0, 10) || '',
@@ -553,7 +561,7 @@ function PageContainer({ title, subtitle, children, actions }: { title: string; 
 
 function formatDate(value?: string | null) {
   if (!value) return '-';
-  return new Date(value).toLocaleDateString();
+  return new Date(value).toLocaleDateString('en-GB');
 }
 
 function userName(users: ProjectUser[], id?: string | null) {
@@ -833,11 +841,17 @@ function ProjectForm({
               {natureOptions.map((item) => <option key={item}>{item}</option>)}
             </select>
           </Field>
-          <Field label="Period Coverage"><input className={inputClass} value={form.assignmentPeriodCoverage} onChange={(e) => change('assignmentPeriodCoverage', e.target.value)} /></Field>
+          <Field label="Period Coverage Start Date"><input type="date" className={inputClass} value={form.assignmentPeriodStartDate} onChange={(e) => change('assignmentPeriodStartDate', e.target.value)} /></Field>
+          <Field label="Period Coverage End Date"><input type="date" className={inputClass} value={form.assignmentPeriodEndDate} onChange={(e) => change('assignmentPeriodEndDate', e.target.value)} /></Field>
           <Field label="Execution Start"><input type="date" className={inputClass} value={form.assignmentExecutionStartDate} onChange={(e) => change('assignmentExecutionStartDate', e.target.value)} /></Field>
           <Field label="Execution End"><input type="date" className={inputClass} value={form.assignmentExecutionEndDate} onChange={(e) => change('assignmentExecutionEndDate', e.target.value)} /></Field>
           <Field label="Reporting Deadline"><input type="date" className={inputClass} value={form.reportingDeadline} onChange={(e) => change('reportingDeadline', e.target.value)} /></Field>
         </div>
+        {(form.assignmentPeriodStartDate || form.assignmentPeriodEndDate) && (
+          <p className="mt-2 text-xs font-bold text-slate-500">
+            Period Coverage: {formatDate(form.assignmentPeriodStartDate)} to {formatDate(form.assignmentPeriodEndDate)}
+          </p>
+        )}
       </section>
 
       <section>
@@ -1035,25 +1049,9 @@ function ProjectEditorModal({
       if (!form.auditManagerId) {
         throw new Error('Audit Manager is required for project creation.');
       }
-      const missingArea = form.areaAllocations.find((area) => area.isCustom ? !(area.customAreaName || area.areaName).trim() : !area.areaKey);
-      if (missingArea) {
-        throw new Error('Select a predefined checklist, or choose Custom and enter a custom area name.');
-      }
-      const missingMaker = form.areaAllocations.find((area) => !area.makerUserId);
-      if (missingMaker) {
-        throw new Error('Maker is required for every allocated area.');
-      }
-      const invalidArea = form.areaAllocations.find((area) => {
-        const makerId = area.makerUserId;
-        const reviewerId = area.reviewerUserId || (makerId ? form.auditManagerId : '');
-        return makerId && reviewerId && makerId === reviewerId;
-      });
-      if (invalidArea) {
-        throw new Error('Maker and reviewer cannot be the same person. Please assign a different reviewer.');
-      }
       const saved = await apiJson(isEdit ? `/api/projects/${project!.id}` : '/api/projects', {
         method: isEdit ? 'PUT' : 'POST',
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, areaAllocations: isEdit ? form.areaAllocations : [] }),
       });
       onSaved(saved);
     } catch (err: any) {
@@ -1068,18 +1066,18 @@ function ProjectEditorModal({
       <div ref={modalRef} className="mx-auto flex max-h-[92vh] max-w-6xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div>
-            <h2 className="text-lg font-extrabold text-slate-950">{isEdit ? 'Edit Project / Assignment' : 'New Project / New Assignment'}</h2>
+            <h2 className="text-lg font-extrabold text-slate-950">{isEdit ? 'Edit Project' : 'New Project'}</h2>
             <p className="text-xs font-semibold text-slate-500">Client details, audit manager, team members, and assignment timeline.</p>
           </div>
           <button onClick={onClose} className="rounded p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button>
         </div>
         <form onSubmit={submit} className="flex-1 overflow-y-auto p-6">
           {error && <div className="mb-4 rounded border border-rose-100 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</div>}
-          <ProjectForm form={form} setForm={setForm} users={users} showAreas={!isEdit} />
+          <ProjectForm form={form} setForm={setForm} users={users} showAreas={false} />
           <div className="mt-6 flex justify-end gap-3 border-t border-slate-200 pt-4">
             <button type="button" onClick={onClose} className="rounded border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700">Cancel</button>
             <button disabled={saving} className="rounded bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-60">
-              {saving ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Assignment'}
+              {saving ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Project'}
             </button>
           </div>
         </form>
@@ -1101,7 +1099,7 @@ function ProjectCard({ project }: { project: ApiProject }) {
           </div>
           <div className="grid grid-cols-2 gap-3 text-xs md:grid-cols-4 lg:w-[620px]">
             <div><p className="font-bold text-slate-900">Current Stage</p><p className="text-slate-600">{project.currentStage || '-'}</p></div>
-            <div><p className="font-bold text-slate-900">Period</p><p className="text-slate-600">{project.assignmentPeriodCoverage || '-'}</p></div>
+            <div><p className="font-bold text-slate-900">Period</p><p className="text-slate-600">{project.assignmentPeriodStartDate || project.assignmentPeriodEndDate ? `${formatDate(project.assignmentPeriodStartDate)} to ${formatDate(project.assignmentPeriodEndDate)}` : project.assignmentPeriodCoverage || '-'}</p></div>
             <div><p className="font-bold text-slate-900">Deadline</p><p className="text-slate-600">{formatDate(project.reportingDeadline)}</p></div>
             <div>
               <p className="font-bold text-slate-900">Progress</p>
@@ -1322,7 +1320,7 @@ function ProjectOverviewTab({ project }: { project: ApiProject; users: ProjectUs
         <SnapshotCard title="Audit Areas" primary={`${dashboard.snapshot.auditAreas.total} Total`} to={`/projects/${project.id}`} lines={[`${dashboard.snapshot.auditAreas.completed} Completed`, `${dashboard.snapshot.auditAreas.inReview} In Review`, `${dashboard.snapshot.auditAreas.pending} Pending`]} />
         <SnapshotCard title="Milestones" primary={`${dashboard.snapshot.milestones.total} Total`} lines={[`${dashboard.snapshot.milestones.completed} Complete`, `${dashboard.snapshot.milestones.active} Active`, `${dashboard.snapshot.milestones.pending} Pending`]} />
         <SnapshotCard title="Observations" primary={`${dashboard.snapshot.observations.open} Open`} lines={[`${dashboard.snapshot.observations.closed} Closed`, `${dashboard.snapshot.observations.high} High`, `${dashboard.snapshot.observations.critical} Critical`]} />
-        <SnapshotCard title="Evidence" primary={`${dashboard.snapshot.evidence.linked}/${dashboard.snapshot.evidence.expected}`} to="/repository" lines={[`${dashboard.snapshot.evidence.expected} Expected`, `${dashboard.snapshot.evidence.linked} Linked`, `${dashboard.snapshot.evidence.missing} Missing`]} />
+        <SnapshotCard title="Evidence Review" primary={`${dashboard.snapshot.evidenceReview.pending} Pending`} to={`/projects/${project.id}?tab=Repository&reviewStatus=PENDING_REVIEW`} lines={[`${dashboard.snapshot.evidenceReview.approved} Approved`, `${dashboard.snapshot.evidenceReview.returned} Returned`]} />
         <SnapshotCard title="Reviews" primary={`${dashboard.snapshot.reviews.pending} Pending`} lines={[`${dashboard.snapshot.reviews.returned} Returned`, `${dashboard.snapshot.reviews.approved} Approved`]} />
         <SnapshotCard title="CAPA" primary={`${dashboard.snapshot.capa.open} Open`} lines={[`${dashboard.snapshot.capa.closed} Closed`, `${dashboard.snapshot.capa.overdue} Overdue`]} />
       </div>
@@ -4306,6 +4304,7 @@ export function MilestoneWorkspacePage() {
 export function ProjectDetailsPage() {
   const { id } = useParams() as { id: string };
   const navigate = useNavigate();
+  const location = useLocation();
   const currentUser = useCurrentUser();
   const [project, setProject] = useState<ApiProject | null>(null);
   const [users, setUsers] = useState<ProjectUser[]>([]);
@@ -4328,6 +4327,11 @@ export function ProjectDetailsPage() {
     setLoading(true);
     reload().catch((err) => setError(err.message || 'Unable to load project')).finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    const requestedTab = new URLSearchParams(location.search).get('tab');
+    if (requestedTab && tabs.includes(requestedTab)) setActiveTab(requestedTab);
+  }, [location.search]);
 
   useEffect(() => {
     const openTab = (event: Event) => {

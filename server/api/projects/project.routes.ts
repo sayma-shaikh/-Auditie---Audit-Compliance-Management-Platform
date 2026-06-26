@@ -278,13 +278,20 @@ async function createAreaWithWorkingPapers(projectId: string, area: any, auditMa
 function projectData(body: any, req: AuthRequest) {
   const natureOfProject = body.natureOfProject || body.frameworks || 'ISO 27001 ISMS';
   const projectName = body.projectName || `${body.clientName || 'New Client'} - ${natureOfProject}`;
+  const periodStart = parseDate(body.assignmentPeriodStartDate);
+  const periodEnd = parseDate(body.assignmentPeriodEndDate);
+  const periodCoverage = periodStart && periodEnd
+    ? `${periodStart.toISOString().slice(0, 10)} to ${periodEnd.toISOString().slice(0, 10)}`
+    : body.assignmentPeriodCoverage;
 
   return {
     projectName,
     clientName: body.clientName,
     frameworks: body.frameworks || natureOfProject,
     natureOfProject,
-    assignmentPeriodCoverage: body.assignmentPeriodCoverage,
+    assignmentPeriodCoverage: periodCoverage,
+    assignmentPeriodStartDate: periodStart,
+    assignmentPeriodEndDate: periodEnd,
     assignmentExecutionStartDate: parseDate(body.assignmentExecutionStartDate),
     assignmentExecutionEndDate: parseDate(body.assignmentExecutionEndDate),
     reportingDeadline: parseDate(body.reportingDeadline),
@@ -473,15 +480,6 @@ router.post('/', authenticateJWT, authorizeRoles('ADMIN'), async (req: AuthReque
       },
     })));
 
-    const areas = (body.areaAllocations?.length ? body.areaAllocations : areaTemplate(body.natureOfProject).map((areaName) => ({ areaName }))) as any[];
-    const invalidArea = areas.find((area) => validateMakerReviewer(area, body.auditManagerId));
-    if (invalidArea) return res.status(400).json({ message: validateMakerReviewer(invalidArea, body.auditManagerId) });
-
-    for (const area of areas) {
-      await createAreaWithWorkingPapers(project.id, { ...area, checklistType: checklistType(area) }, body.auditManagerId);
-    }
-    const initiallyAssignedUserIds = Array.from(new Set(areas.flatMap((area) => [area.makerUserId || area.assignedUserId, area.reviewerUserId || body.auditManagerId]).filter(Boolean))) as string[];
-
     await prisma.projectStage.createMany({
       data: lifecycleStages.map((stageName, index) => ({
         projectId: project.id,
@@ -497,7 +495,7 @@ router.post('/', authenticateJWT, authorizeRoles('ADMIN'), async (req: AuthReque
     await prisma.projectBackup.create({ data: { projectId: project.id, backupStatus: 'Pending' } });
     await logProjectAction(project.id, req, 'PROJECT_CREATED', `Project created for ${body.clientName}`);
     await recalculateProject(project.id);
-    await Promise.all(initiallyAssignedUserIds.map((userId) => calculateUserPerformance(userId)));
+    await Promise.all(memberIds.map((userId) => calculateUserPerformance(userId)));
 
     const created = await prisma.project.findUnique({ where: { id: project.id }, include: includeProject });
     res.status(201).json(created);

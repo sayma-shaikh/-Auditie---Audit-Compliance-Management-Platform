@@ -1463,6 +1463,7 @@ router.post('/table-rows/:rowId/evidence', authenticateJWT, rowEvidenceUpload, a
         filePath: `/uploads/audit-evidence/${file.filename}`,
         fileType: file.mimetype,
         fileSize: file.size,
+        reviewStatus: 'PENDING_REVIEW',
         uploadedBy: req.user?.id,
       },
     })));
@@ -1562,6 +1563,7 @@ router.post('/table-rows/:rowId/repository-evidence', authenticateJWT, async (re
         fileType: req.body.fileType || 'repository-link',
         repositoryItemId: req.body.repositoryItemId || null,
         repositoryPath,
+        reviewStatus: 'PENDING_REVIEW',
         uploadedBy: req.user?.id,
       },
     });
@@ -1874,6 +1876,7 @@ router.post('/project-areas/:areaId/evidence', authenticateJWT, upload.array('fi
       uploadedBy: req.user?.id,
       uploadedAt: new Date().toISOString(),
       checklistItemId: req.body.checklistItemId || null,
+      reviewStatus: 'PENDING_REVIEW',
     }));
     const repositoryAttachments = req.body.repositoryFolder
       ? [{
@@ -1884,6 +1887,7 @@ router.post('/project-areas/:areaId/evidence', authenticateJWT, upload.array('fi
           uploadedBy: req.user?.id,
           uploadedAt: new Date().toISOString(),
           checklistItemId: req.body.checklistItemId || null,
+          reviewStatus: 'PENDING_REVIEW',
         }]
       : [];
 
