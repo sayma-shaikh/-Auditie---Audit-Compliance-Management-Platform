@@ -435,6 +435,9 @@ function DashboardPage() {
   });
   const [sortKey, setSortKey] = useState<'project' | 'progress' | 'health' | 'dueDate'>('progress');
   const [page, setPage] = useState(1);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [chartTab, setChartTab] = useState<'Portfolio Health' | 'Projects' | 'Frameworks' | 'Risks' | 'Reviews' | 'Workload' | 'Observations'>('Portfolio Health');
+  const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
     if (!user) return;
@@ -454,7 +457,12 @@ function DashboardPage() {
       })
       .catch((err) => setError(err.message || 'Unable to load dashboard'))
       .finally(() => setLoading(false));
-  }, [user, filters.search, filters.framework, filters.manager, filters.reviewer, filters.status, filters.industry, filters.client, filters.dateRange, filters.health]);
+  }, [user, filters.search, filters.framework, filters.manager, filters.reviewer, filters.status, filters.industry, filters.client, filters.dateRange, filters.health, refreshTick]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setRefreshTick((tick) => tick + 1), 60000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   if (user?.role === 'AUDITOR') {
     return (
@@ -472,7 +480,7 @@ function DashboardPage() {
     { name: 'Warning', value: dashboard.health.warning, color: '#f59e0b' },
     { name: 'Critical', value: dashboard.health.critical, color: '#e11d48' },
   ] : [];
-  const rows = dashboard?.projects?.rows || [];
+  const rows = dashboard?.projects?.topPriority || dashboard?.projects?.rows || [];
   const sortedRows = [...rows].sort((a, b) => {
     if (sortKey === 'progress') return b.progress - a.progress;
     if (sortKey === 'dueDate') return Number(new Date(a.dueDate || 0)) - Number(new Date(b.dueDate || 0));
@@ -492,6 +500,14 @@ function DashboardPage() {
       {loading && !dashboard && <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm font-bold text-slate-500">Loading portfolio dashboard...</div>}
       {dashboard && (
         <>
+          <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-500 md:flex-row md:items-center md:justify-between">
+            <span>Last refreshed: {dashboard.overview?.lastRefreshed ? new Date(dashboard.overview.lastRefreshed).toLocaleString() : '-'}</span>
+            <div className="flex gap-2">
+              <button onClick={() => setFiltersOpen((open) => !open)} className="rounded bg-blue-50 px-3 py-1.5 text-blue-700 hover:bg-blue-100">{filtersOpen ? 'Hide Filters' : 'Show Filters'}</button>
+              <button onClick={() => setRefreshTick((tick) => tick + 1)} className="rounded bg-slate-100 px-3 py-1.5 text-slate-700 hover:bg-slate-200">Refresh now</button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
             {[
               ['Active Projects', dashboard.portfolio.activeProjects, 'bg-blue-600', '/projects'],
@@ -507,11 +523,15 @@ function DashboardPage() {
                   <span className={cn('h-2.5 w-2.5 rounded-full', String(tone))} />
                 </div>
                 <p className="mt-3 text-3xl font-extrabold text-slate-950">{value}</p>
+                <div className="mt-3 flex h-6 items-end gap-1">
+                  {(dashboard.portfolio.sparkline || []).map((point: number, index: number) => <span key={index} className={cn('w-full rounded-t', String(tone))} style={{ height: `${Math.max(4, Math.min(24, point * 5))}px` }} />)}
+                </div>
+                <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">{dashboard.portfolio.trend >= 0 ? '+' : ''}{dashboard.portfolio.trend}% vs previous 30 days</p>
               </Link>
             ))}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className={cn('grid grid-cols-1 gap-4', filtersOpen && 'xl:grid-cols-[minmax(0,1fr)_320px]')}>
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
                 <div className="rounded-lg border border-blue-100 bg-blue-50 p-5 xl:col-span-2">
@@ -530,27 +550,30 @@ function DashboardPage() {
                 </DashboardPanel>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
-                <DashboardChart title="Portfolio Health">
-                  <ResponsiveContainer width="100%" height={220}>
-                    <PieChart>
-                      <Pie data={healthData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={82} paddingAngle={4}>
-                        {healthData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </DashboardChart>
-                <DashboardChart title="Projects by Status">
-                  <ResponsiveContainer width="100%" height={220}><BarChart data={dashboard.projects.byStatus}><XAxis dataKey="status" hide /><YAxis allowDecimals={false} /><Tooltip /><Bar dataKey="count" fill="#2563eb" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer>
-                </DashboardChart>
-                <DashboardChart title="Projects by Framework">
-                  <ResponsiveContainer width="100%" height={220}><BarChart data={dashboard.frameworks} layout="vertical" margin={{ left: 20 }}><XAxis type="number" allowDecimals={false} /><YAxis dataKey="framework" type="category" width={70} /><Tooltip /><Bar dataKey="count" fill="#0f766e" radius={[0, 4, 4, 0]} /></BarChart></ResponsiveContainer>
-                </DashboardChart>
-                <DashboardChart title="Risk Overview">
-                  <ResponsiveContainer width="100%" height={220}><BarChart data={dashboard.risk}><XAxis dataKey="risk" /><YAxis allowDecimals={false} /><Tooltip /><Bar dataKey="count" fill="#e11d48" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer>
-                </DashboardChart>
-              </div>
+              <DashboardChart title="Portfolio Analytics">
+                <div className="mb-4 flex flex-wrap gap-2">
+                  {(['Portfolio Health', 'Projects', 'Frameworks', 'Risks', 'Reviews', 'Workload', 'Observations'] as const).map((tab) => (
+                    <button key={tab} onClick={() => setChartTab(tab)} className={cn('rounded px-3 py-1.5 text-xs font-bold', chartTab === tab ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}>{tab}</button>
+                  ))}
+                </div>
+                <ResponsiveContainer width="100%" height={320}>
+                  {chartTab === 'Portfolio Health' ? (
+                    <PieChart><Pie data={healthData} dataKey="value" nameKey="name" innerRadius={80} outerRadius={125} paddingAngle={4}>{healthData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}</Pie><Tooltip /></PieChart>
+                  ) : chartTab === 'Frameworks' ? (
+                    <BarChart data={dashboard.charts.frameworks} layout="vertical" margin={{ left: 30 }}><XAxis type="number" allowDecimals={false} /><YAxis dataKey="framework" type="category" width={90} /><Tooltip /><Bar dataKey="count" fill="#0f766e" radius={[0, 4, 4, 0]} /></BarChart>
+                  ) : chartTab === 'Risks' ? (
+                    <BarChart data={dashboard.charts.risks}><XAxis dataKey="risk" /><YAxis allowDecimals={false} /><Tooltip /><Bar dataKey="count" fill="#e11d48" radius={[4, 4, 0, 0]} /></BarChart>
+                  ) : chartTab === 'Reviews' ? (
+                    <BarChart data={dashboard.charts.reviews}><XAxis dataKey="status" /><YAxis allowDecimals={false} /><Tooltip /><Bar dataKey="count" fill="#f59e0b" radius={[4, 4, 0, 0]} /></BarChart>
+                  ) : chartTab === 'Workload' ? (
+                    <BarChart data={dashboard.charts.workload}><XAxis dataKey="name" /><YAxis allowDecimals={false} /><Tooltip /><Bar dataKey="workloadPercent" fill="#2563eb" radius={[4, 4, 0, 0]} /></BarChart>
+                  ) : chartTab === 'Observations' ? (
+                    <BarChart data={dashboard.charts.observations}><XAxis dataKey="severity" /><YAxis allowDecimals={false} /><Tooltip /><Bar dataKey="count" fill="#7c3aed" radius={[4, 4, 0, 0]} /></BarChart>
+                  ) : (
+                    <BarChart data={dashboard.charts.projects}><XAxis dataKey="status" /><YAxis allowDecimals={false} /><Tooltip /><Bar dataKey="count" fill="#2563eb" radius={[4, 4, 0, 0]} /></BarChart>
+                  )}
+                </ResponsiveContainer>
+              </DashboardChart>
 
               <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
                 <div className="flex flex-col gap-3 border-b border-slate-100 p-4 md:flex-row md:items-center md:justify-between">
@@ -601,9 +624,52 @@ function DashboardPage() {
                   <div className="grid grid-cols-2 gap-2"><MiniMetric label="Critical" value={dashboard.observations.critical} /><MiniMetric label="High" value={dashboard.observations.high} /><MiniMetric label="Medium" value={dashboard.observations.medium} /><MiniMetric label="Low" value={dashboard.observations.low} /><MiniMetric label="Closed" value={dashboard.observations.closed} /><MiniMetric label="Pending" value={dashboard.observations.pendingReview} /></div>
                 </DashboardPanel>
               </div>
+
+              <DashboardPanel title="Framework Health">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {dashboard.frameworkHealth.map((item: any) => (
+                    <div key={item.framework} className="rounded border border-slate-100 p-3">
+                      <div className="flex items-center justify-between"><p className="text-sm font-extrabold text-slate-950">{item.framework}</p><span className={healthBadge(item.health)}>{item.health}</span></div>
+                      <div className="mt-3 h-2 rounded bg-slate-200"><div className="h-full rounded bg-blue-600" style={{ width: `${item.progress}%` }} /></div>
+                      <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] font-bold text-slate-500"><span>{item.projects} projects</span><span>{item.completedControls} done</span><span>{item.pendingControls} pending</span></div>
+                    </div>
+                  ))}
+                </div>
+              </DashboardPanel>
+
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                <DashboardPanel title="Risk Matrix">
+                  <div className="grid grid-cols-[80px_repeat(4,minmax(0,1fr))] gap-1 text-center text-xs font-bold">
+                    <span />
+                    {['Low', 'Medium', 'High', 'Critical'].map((impact) => <span key={impact} className="rounded bg-slate-50 p-2 text-slate-500">{impact}</span>)}
+                    {dashboard.riskMatrix.map((row: any) => (
+                      <React.Fragment key={row.likelihood}>
+                        <span className="rounded bg-slate-50 p-2 text-slate-500">{row.likelihood}</span>
+                        {row.cells.map((cell: any) => <Link to="/projects" key={`${row.likelihood}-${cell.impact}`} className={cn('rounded p-3 text-slate-950', cell.count > 0 ? 'bg-rose-100 hover:bg-rose-200' : 'bg-slate-50 hover:bg-slate-100')}>{cell.count}</Link>)}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </DashboardPanel>
+                <DashboardPanel title="Business Activity">
+                  <div className="space-y-4">
+                    {dashboard.recentBusinessActivities.map((group: any) => (
+                      <div key={group.date}>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{new Date(group.date).toLocaleDateString()}</p>
+                        <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">{group.items.map((item: any) => <div key={item.type} className="rounded border border-slate-100 bg-slate-50 p-2 text-xs font-bold text-slate-700">{item.message}</div>)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </DashboardPanel>
+              </div>
+
+              <DashboardPanel title="Quick Actions">
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                  {dashboard.quickActions.map((action: any) => <Link key={action.label} to={action.href === '#export-dashboard' ? '#' : action.href} onClick={(event) => { if (action.href === '#export-dashboard') { event.preventDefault(); window.print(); } }} className="rounded border border-slate-200 bg-slate-50 px-3 py-3 text-center text-xs font-extrabold text-slate-800 hover:border-blue-300 hover:bg-blue-50">{action.label}</Link>)}
+                </div>
+              </DashboardPanel>
             </div>
 
-            <aside className="space-y-4">
+            {filtersOpen && <aside className="space-y-4">
               <DashboardPanel title="Project Filters">
                 <div className="space-y-2">
                   <input value={filters.search} onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, search: e.target.value })); }} placeholder="Search portfolio..." className="h-9 w-full rounded border border-slate-200 bg-slate-50 px-3 text-xs outline-none" />
@@ -622,7 +688,7 @@ function DashboardPage() {
               <DashboardPanel title="Recent Activity">
                 <div className="space-y-3">{dashboard.activity.length === 0 && <EmptyLine text="No recent activity." />}{dashboard.activity.slice(0, 12).map((log: any) => <div key={log.id} className="flex gap-3"><div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-slate-50 text-[10px] font-bold text-slate-600"><History className="h-3.5 w-3.5" /></div><div><p className="text-xs font-semibold text-slate-800">{log.message}</p><p className="text-[10px] font-semibold text-slate-400">{log.user} · {new Date(log.createdAt).toLocaleString()} · {log.document}</p></div></div>)}</div>
               </DashboardPanel>
-            </aside>
+            </aside>}
           </div>
         </>
       )}

@@ -14,6 +14,8 @@ type DashboardFilters = {
   health?: string;
 };
 
+const dashboardCache = new Map<string, { expiresAt: number; payload: any }>();
+
 function todayStart() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -85,6 +87,9 @@ function dueDateInRange(date: Date | null | undefined, range?: string) {
 export async function getAdminDashboard(prisma: PrismaLike, user: any, filters: DashboardFilters = {}) {
   if (!user) throw Object.assign(new Error('Unauthorized'), { statusCode: 401 });
   if (user.role === 'AUDITOR') throw Object.assign(new Error('Auditors do not have access to the admin portfolio dashboard.'), { statusCode: 403 });
+  const cacheKey = JSON.stringify({ userId: user.id, role: user.role, filters });
+  const cached = dashboardCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.payload;
 
   const projectWhere: any = {};
   if (user.role !== 'ADMIN') projectWhere.auditManagerId = user.id;
@@ -287,16 +292,95 @@ export async function getAdminDashboard(prisma: PrismaLike, user: any, filters: 
     stage: item.stage,
   }));
 
-  return {
+  const totalCompletedControls = projectMetrics.reduce((sum, item) => sum + item.completedChecklist, 0);
+  const totalControls = projectMetrics.reduce((sum, item) => sum + item.totalChecklist, 0);
+  const totalClosedObservations = observations.filter((obs) => isClosed(obs.status)).length;
+  const totalCompletedReviews = projectMetrics.reduce((sum, item) => sum + item.project.areaAllocations.filter((area) => area.reviewStatus === 'APPROVED').length, 0);
+  const totalReviewItems = projectMetrics.reduce((sum, item) => sum + item.project.areaAllocations.filter((area) => ['AWAITING_REVIEW', 'APPROVED', 'REWORK_REQUIRED'].includes(area.reviewStatus)).length, 0);
+  const totalCompletedMilestones = projectMetrics.reduce((sum, item) => sum + item.project.milestones.filter((milestone) => milestone.status === 'COMPLETED').length, 0);
+  const totalMilestones = projectMetrics.reduce((sum, item) => sum + item.project.milestones.length, 0);
+  const portfolioHealth = percent(totalCompletedControls + totalClosedObservations + totalCompletedReviews + totalCompletedMilestones, totalControls + observations.length + totalReviewItems + totalMilestones);
+  const previousWindowStart = new Date(today);
+  previousWindowStart.setDate(previousWindowStart.getDate() - 60);
+  const currentWindowStart = new Date(today);
+  currentWindowStart.setDate(currentWindowStart.getDate() - 30);
+  const currentProjects = projectsRaw.filter((project) => project.createdAt >= currentWindowStart).length;
+  const previousProjects = projectsRaw.filter((project) => project.createdAt >= previousWindowStart && project.createdAt < currentWindowStart).length;
+  const trend = previousProjects ? Math.round(((currentProjects - previousProjects) / previousProjects) * 100) : currentProjects ? 100 : 0;
+  const sparkline = Array.from({ length: 6 }, (_, index) => {
+    const bucketStart = new Date(today);
+    bucketStart.setDate(bucketStart.getDate() - ((6 - index) * 5));
+    const bucketEnd = new Date(bucketStart);
+    bucketEnd.setDate(bucketEnd.getDate() + 5);
+    return projectsRaw.filter((project) => project.updatedAt >= bucketStart && project.updatedAt < bucketEnd).length;
+  });
+  const frameworkHealth = frameworks.map((framework) => {
+    const scoped = projectMetrics.filter((item) => normalize([item.project.frameworks, item.project.natureOfProject].join(' ')).includes(normalize(framework)));
+    const controls = scoped.reduce((sum, item) => sum + item.totalChecklist, 0);
+    const completed = scoped.reduce((sum, item) => sum + item.completedChecklist, 0);
+    const progress = percent(completed, controls);
+    return {
+      framework,
+      projects: scoped.length,
+      progress,
+      completedControls: completed,
+      pendingControls: Math.max(controls - completed, 0),
+      health: progress >= 80 ? 'Healthy' : progress >= 50 ? 'Warning' : 'Critical',
+      trend,
+    };
+  });
+  const impacts = ['Low', 'Medium', 'High', 'Critical'];
+  const likelihoods = ['Low', 'Medium', 'High', 'Critical'];
+  const riskMatrix = likelihoods.map((likelihood, rowIndex) => ({
+    likelihood,
+    cells: impacts.map((impact, colIndex) => ({
+      impact,
+      count: observations.filter((obs) => severity(obs) === impact).length && rowIndex === Math.min(3, colIndex) ? observations.filter((obs) => severity(obs) === impact).length : 0,
+    })),
+  }));
+  const businessActivityByDate = [{
+    date: today.toISOString(),
+    items: [
+    { type: 'CONTROLS_REVIEWED', message: `${totalCompletedControls} controls reviewed`, count: totalCompletedControls },
+    { type: 'EVIDENCE_UPLOADED', message: `${projectMetrics.reduce((sum, item) => sum + item.evidenceLinked, 0)} evidence uploaded`, count: projectMetrics.reduce((sum, item) => sum + item.evidenceLinked, 0) },
+    { type: 'REPORTS_GENERATED', message: `${reportsGenerated} reports generated`, count: reportsGenerated },
+    { type: 'MILESTONES_COMPLETED', message: `${totalCompletedMilestones} milestones completed`, count: totalCompletedMilestones },
+    { type: 'CRITICAL_OBSERVATIONS', message: `${observationSummary.critical} critical observations raised`, count: observationSummary.critical },
+    { type: 'AUDITORS_ASSIGNED', message: `${team.length} auditors assigned`, count: team.length },
+    ],
+  }];
+  const topPriorityProjects = projectRows
+    .slice()
+    .sort((a, b) => {
+      const aMetric = projectMetrics.find((item) => item.project.id === a.id);
+      const bMetric = projectMetrics.find((item) => item.project.id === b.id);
+      return ((bMetric?.overdueCount || 0) + (b.health === 'Critical' ? 10 : b.health === 'Warning' ? 5 : 0)) - ((aMetric?.overdueCount || 0) + (a.health === 'Critical' ? 10 : a.health === 'Warning' ? 5 : 0));
+    })
+    .slice(0, 5);
+  const payload = {
+    overview: {
+      activeProjects: active.length,
+      projectsAtRisk: projectMetrics.filter((item) => item.health !== 'Healthy').length,
+      overdueTasks,
+      portfolioHealth,
+      pendingReviews,
+      reportsGenerated,
+      lastRefreshed: new Date().toISOString(),
+      trend,
+      sparkline,
+    },
     portfolio: {
       activeProjects: active.length,
       projectsAtRisk: projectMetrics.filter((item) => item.health !== 'Healthy').length,
       overdueTasks,
-      portfolioHealth: percent(healthyProjects, active.length),
+      portfolioHealth,
       openReviews: pendingReviews,
       reportsGenerated,
       totalProjects: projectMetrics.length,
+      trend,
+      sparkline,
     },
+    portfolioHealth: { score: portfolioHealth, healthyProjects, activeProjects: active.length },
     health: {
       healthy: projectMetrics.filter((item) => item.health === 'Healthy').length,
       warning: projectMetrics.filter((item) => item.health === 'Warning').length,
@@ -304,11 +388,14 @@ export async function getAdminDashboard(prisma: PrismaLike, user: any, filters: 
     },
     projects: {
       rows: projectRows,
+      topPriority: topPriorityProjects,
       byStatus: ['Planning', 'Execution', 'Under Review', 'Reporting', 'Closed', 'Completed'].map((status) => ({ status, count: projectMetrics.filter((item) => item.stage === status).length })),
       activeCount: active.length,
     },
     frameworks: byFramework,
+    frameworkHealth,
     risk: ['Critical', 'High', 'Medium', 'Low'].map((risk) => ({ risk, count: projectMetrics.filter((item) => item.riskLevel === risk).length })),
+    riskMatrix,
     team,
     deadlines,
     reviews: {
@@ -320,6 +407,7 @@ export async function getAdminDashboard(prisma: PrismaLike, user: any, filters: 
       averageReviewTime,
     },
     observations: observationSummary,
+    riskSummary: observationSummary,
     activity: [
       ...auditLogs.map((log) => ({ id: log.id, type: log.actionType, message: log.details || log.actionType, user: log.user?.name || 'System', createdAt: log.timestamp, document: log.document?.title || log.repositoryItem?.name || 'System' })),
       ...projects.flatMap((project) => project.activityLogs.map((log) => ({ id: log.id, type: log.actionType || log.action, message: log.message || log.details || log.action, user: log.performedByName || log.actor || 'System', createdAt: log.timestamp, document: project.projectName }))),
@@ -334,7 +422,42 @@ export async function getAdminDashboard(prisma: PrismaLike, user: any, filters: 
       health: ['Healthy', 'Warning', 'Critical'],
     },
     aiInsights: insights,
+    recentBusinessActivities: businessActivityByDate,
+    charts: {
+      portfolioHealth: [
+        { name: 'Healthy', value: projectMetrics.filter((item) => item.health === 'Healthy').length },
+        { name: 'Warning', value: projectMetrics.filter((item) => item.health === 'Warning').length },
+        { name: 'Critical', value: projectMetrics.filter((item) => item.health === 'Critical').length },
+      ],
+      projects: ['Planning', 'Execution', 'Under Review', 'Reporting', 'Closed', 'Completed'].map((status) => ({ status, count: projectMetrics.filter((item) => item.stage === status).length })),
+      frameworks: byFramework,
+      risks: ['Critical', 'High', 'Medium', 'Low'].map((risk) => ({ risk, count: projectMetrics.filter((item) => item.riskLevel === risk).length })),
+      reviews: [
+        { status: 'Pending', count: pendingReviews },
+        { status: 'Returned', count: projectMetrics.reduce((sum, item) => sum + item.project.areaAllocations.filter((area) => area.reviewStatus === 'REWORK_REQUIRED').length, 0) },
+        { status: 'Overdue', count: projectMetrics.reduce((sum, item) => sum + item.overdueReviews, 0) },
+        { status: 'Approved Today', count: approvedToday },
+      ],
+      workload: team,
+      observations: [
+        { severity: 'Critical', count: observationSummary.critical },
+        { severity: 'High', count: observationSummary.high },
+        { severity: 'Medium', count: observationSummary.medium },
+        { severity: 'Low', count: observationSummary.low },
+      ],
+    },
+    quickActions: [
+      { label: 'New Project', href: '/projects' },
+      { label: 'Generate Report', href: '/templates' },
+      { label: 'Import Checklist', href: '/projects' },
+      { label: 'Repository', href: '/repository' },
+      { label: 'Templates', href: '/templates' },
+      { label: 'Users', href: '/users' },
+      { label: 'Review Queue', href: '/my-work' },
+      { label: 'Export Dashboard', href: '#export-dashboard' },
+    ],
     repository: { files: repositoryFiles },
   };
+  dashboardCache.set(cacheKey, { expiresAt: Date.now() + 30_000, payload });
+  return payload;
 }
-
