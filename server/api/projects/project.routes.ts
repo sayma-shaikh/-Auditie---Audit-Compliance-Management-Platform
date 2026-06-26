@@ -4,6 +4,7 @@ import { authenticateJWT, authorizeRoles, AuthRequest } from '../../middleware/a
 import { calculateUserPerformance } from '../../services/performance-analytics.service.ts';
 import { checklistAreaOption, checklistTemplateForArea, checklistTypeForArea, createChecklistSnapshot, defaultAuditAreas, workingPaperNamesForArea } from '../../data/checklist-library.ts';
 import { getProjectMilestoneSummary, seedProjectMilestones } from '../../services/review-program.service.ts';
+import { getProjectOverviewDashboard } from '../../services/project-overview.service.ts';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -394,6 +395,26 @@ router.get('/my-reviews', authenticateJWT, async (req: AuthRequest, res) => {
     })));
   } catch (err) {
     console.error('My reviews error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.get('/:id/overview-dashboard', authenticateJWT, async (req: AuthRequest, res) => {
+  try {
+    const dashboard = await getProjectOverviewDashboard(prisma, req.params.id, {
+      area: req.query.area ? String(req.query.area) : undefined,
+      owner: req.query.owner ? String(req.query.owner) : undefined,
+      reviewer: req.query.reviewer ? String(req.query.reviewer) : undefined,
+      milestone: req.query.milestone ? String(req.query.milestone) : undefined,
+      status: req.query.status ? String(req.query.status) : undefined,
+      severity: req.query.severity ? String(req.query.severity) : undefined,
+      framework: req.query.framework ? String(req.query.framework) : undefined,
+      dueDateRange: req.query.dueDateRange ? String(req.query.dueDateRange) : undefined,
+    });
+    if (!dashboard) return res.status(404).json({ message: 'Project not found' });
+    res.json(dashboard);
+  } catch (err) {
+    console.error('Project overview dashboard error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });

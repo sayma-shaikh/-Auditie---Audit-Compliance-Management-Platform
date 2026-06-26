@@ -369,6 +369,25 @@ type ApiProject = {
   updatedAt?: string;
 };
 
+type OverviewDashboard = {
+  project: { id: string; name: string; clientName: string; framework?: string | null; industry?: string | null; status: string; auditManager?: string | null; reviewer?: string | null; startDate?: string | null; endDate?: string | null; currentPhase?: string | null };
+  filters: { areas: Array<{ id: string; name: string }>; owners: Array<{ id: string; name: string }>; reviewers: Array<{ id: string; name: string }>; milestones: Array<{ id: string; name: string }>; statuses: string[] };
+  health: { status: 'HEALTHY' | 'NEEDS_ATTENTION' | 'CRITICAL'; score: number; reasons: string[] };
+  kpis: Record<string, number>;
+  checklists: { totalRows: number; completedRows: number; pendingRows: number; nonCompliantRows: number; notApplicableRows: number; observationsCreated: number; evidenceMissing: number; completionPercent: number; statusDistribution: Array<{ label: string; value: number }> };
+  areas: Array<{ areaId: string; name: string; maker?: string | null; reviewer?: string | null; progress: number; status: string; dueDate?: string | null; checklistRows: number; completedRows: number; pendingRows: number; observations: number; openObservations: number; evidenceCount: number }>;
+  observations: { total: number; open: number; closed: number; rejected: number; returned: number; pendingReview: number; withoutCapa: number; bySeverity: { high: number; medium: number; low: number }; byArea: Array<{ area: string; count: number }> };
+  capa: { total: number; open: number; closed: number; overdue: number; pendingVerification: number; closurePercent: number };
+  evidence: { totalLinked: number; repositoryFiles: number; deviceUploads: number; googleDriveFiles: number; linkedEvidence: number; missingEvidenceRows: number; observationsMissingEvidence: number; capaMissingEvidence: number; folders: number; recentFiles: Array<{ id: string; name: string; source: string; size?: number | null; createdAt: string }> };
+  queries: { total: number; open: number; closed: number; overdue: number; pendingClientResponse: number; pendingAuditorResponse: number };
+  milestones: { total: number; completed: number; inProgress: number; pending: number; overdue: number; current?: string | null; rows: Array<{ id: string; milestone: string; owner?: string | null; status: string; dueDate?: string | null; started?: string | null; completed?: string | null; progress: number; pendingActions: string; reviewStatus: string; repository: number }> };
+  team: Array<{ userId: string; name: string; role: string; assignedAreas: number; checklistRows: number; completedRows: number; pendingRows: number; pendingReviews: number; observationsCreated: number; overdueItems: number; workloadPercent: number }>;
+  recentActivity: Array<{ id: string; type: string; message: string; user: string; createdAt: string }>;
+  deadlines: { nextMilestone?: { id: string; name: string; dueDate?: string | null } | null; nextReview?: any; capaDue?: any; billingDue?: any; reportDue?: string | null; lateTasks: number };
+  repository: { folders: number; files: number; recentlyAdded: number; storageUsed: number; evidenceLinked: number; recentFiles: Array<{ id: string; name: string; source: string; size?: number | null; createdAt: string }> };
+  frameworkCoverage: Array<{ framework: string; definition: number; implementation: number; testing: number; evidence: number; review: number; readiness: number }>;
+};
+
 type QueueAreaItem = {
   project: Pick<ApiProject, 'id' | 'projectName' | 'clientName' | 'natureOfProject' | 'frameworks' | 'auditManagerId'>;
   area: ProjectAreaAllocation;
@@ -1185,91 +1204,176 @@ function Metric({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function ProjectOverviewTab({ project, users }: { project: ApiProject; users: ProjectUser[] }) {
-  const team = project.userProjects?.map((item) => item.user).filter(Boolean) as ProjectUser[] || [];
-  const boardColumns = [
-    { title: 'Not Started', statuses: ['Draft', 'Not Started'] },
-    { title: 'In Progress', statuses: ['In Progress'] },
-    { title: 'Awaiting Review', statuses: ['Awaiting Review'] },
-    { title: 'Rework Required', statuses: ['Rework Required'] },
-    { title: 'Completed', statuses: ['Approved', 'Completed'] },
-  ];
+function MiniBar({ value, tone = 'bg-blue-600' }: { value: number; tone?: string }) {
+  return <div className="h-1.5 rounded-full bg-slate-200"><div className={cn('h-full rounded-full', tone)} style={{ width: `${Math.max(0, Math.min(100, value || 0))}%` }} /></div>;
+}
+
+function OverviewKpi({ label, value, tone, to }: { label: string; value: number | string; tone?: string; to?: string }) {
+  const content = (
+    <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm hover:border-blue-300">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</p>
+        <span className={cn('h-2 w-2 rounded-full', tone || 'bg-blue-500')} />
+      </div>
+      <p className="mt-2 text-2xl font-extrabold text-slate-950">{value}</p>
+      <MiniBar value={typeof value === 'number' ? value : 0} tone={tone || 'bg-blue-600'} />
+    </div>
+  );
+  return to ? <Link to={to}>{content}</Link> : content;
+}
+
+function ProjectOverviewTab({ project }: { project: ApiProject; users: ProjectUser[] }) {
+  const [dashboard, setDashboard] = useState<OverviewDashboard | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [filters, setFilters] = useState({ area: '', owner: '', reviewer: '', milestone: '', status: '', severity: '', dueDateRange: '' });
+
+  const loadDashboard = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, String(value)); });
+      const data = await apiJson(`/api/projects/${project.id}/overview-dashboard${params.toString() ? `?${params.toString()}` : ''}`);
+      setDashboard(data);
+    } catch (err: any) {
+      setError(err.message || 'Unable to load overview dashboard.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDashboard().catch(console.error);
+  }, [project.id, filters.area, filters.owner, filters.reviewer, filters.milestone, filters.status, filters.severity, filters.dueDateRange]);
+
+  if (loading && !dashboard) return <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm font-bold text-slate-500">Loading executive audit cockpit...</div>;
+  if (!dashboard) return <div className="rounded border border-rose-100 bg-rose-50 p-6 text-sm font-semibold text-rose-700">{error || 'Overview dashboard unavailable.'}</div>;
+
+  const kpis = dashboard.kpis;
+  const healthTone = dashboard.health.status === 'HEALTHY' ? 'bg-emerald-500' : dashboard.health.status === 'CRITICAL' ? 'bg-rose-600' : 'bg-amber-500';
+  const healthLabel = dashboard.health.status === 'HEALTHY' ? 'Healthy' : dashboard.health.status === 'CRITICAL' ? 'Critical' : 'Needs Attention';
+
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-        <Metric label="Client Name" value={project.clientName} />
-        <Metric label="Nature of Assignment" value={project.natureOfProject || project.frameworks} />
-        <Metric label="Coverage" value={project.assignmentPeriodCoverage || '-'} />
-        <Metric label="Reporting Deadline" value={formatDate(project.reportingDeadline)} />
-        <Metric label="Audit Manager" value={userName(users, project.auditManagerId)} />
-        <Metric label="Current Stage" value={project.currentStage || '-'} />
-        <Metric label="Industry" value={project.typeOfIndustry || '-'} />
-        <Metric label="Geographical Presence" value={project.geographicalPresence || '-'} />
-      </div>
-      <div className="rounded-lg border border-slate-200 bg-white p-5">
-        <div className="flex items-center justify-between">
-          <h3 className="font-extrabold text-slate-950">Overall Progress</h3>
-          <span className="text-sm font-extrabold text-slate-800">{project.progressPercentage || 0}%</span>
-        </div>
-        <div className="mt-3 h-3 rounded-full bg-slate-200"><div className="h-full rounded-full bg-blue-600" style={{ width: `${project.progressPercentage || 0}%` }} /></div>
-      </div>
-      <div className="rounded-lg border border-slate-200 bg-white p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-extrabold text-slate-950">Project Board</h3>
-          <p className="text-xs font-semibold text-slate-500">Area status, ownership, due date, progress, and bottlenecks.</p>
-        </div>
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-5">
-          {boardColumns.map((column) => (
-            <div key={column.title} className="rounded border border-slate-200 bg-slate-50 p-3">
-              <h4 className="text-xs font-extrabold uppercase tracking-widest text-slate-500">{column.title}</h4>
-              <div className="mt-3 space-y-3">
-                {(project.areaAllocations || []).filter((area) => column.statuses.includes(areaDisplayStatus(area)) || (column.title === 'Awaiting Review' && areaDisplayStatus(area) === 'Awaiting Review')).map((area) => {
-                  const progress = checklistProgress(area);
-                  const overdue = area.dueDate && new Date(area.dueDate) < new Date() && areaDisplayStatus(area) !== 'Completed';
-                  return (
-                    <Link to={`/projects/${project.id}/areas/${area.id}`} key={area.id} className="block rounded border border-slate-200 bg-white p-3 shadow-sm hover:border-blue-300">
-                      <p className="text-sm font-bold text-slate-900">{area.areaName}</p>
-                      <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Maker: {userName(users, area.makerUserId || area.assignedUserId)}</p>
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Reviewer: {userName(users, area.reviewerUserId || project.auditManagerId)} {area.reviewerUserId ? '(Assigned Reviewer)' : '(Default Audit Manager)'}</p>
-                      <div className="mt-2 h-1.5 rounded bg-slate-200"><div className="h-full rounded bg-blue-600" style={{ width: `${progress.percent}%` }} /></div>
-                      <div className="mt-2 flex items-center justify-between text-[10px] font-bold text-slate-500">
-                        <span>{progress.percent}%</span>
-                        <span className={overdue ? 'text-rose-600' : ''}>{formatDate(area.dueDate)}</span>
-                      </div>
-                    </Link>
-                  );
-                })}
-                {(project.areaAllocations || []).filter((area) => column.statuses.includes(areaDisplayStatus(area)) || (column.title === 'Awaiting Review' && areaDisplayStatus(area) === 'Awaiting Review')).length === 0 && (
-                  <p className="rounded border border-dashed border-slate-200 bg-white p-3 text-center text-xs font-semibold text-slate-400">No cards</p>
-                )}
-              </div>
+      {error && <div className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">{error}</div>}
+      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Executive Audit Cockpit</p>
+            <h2 className="mt-1 text-2xl font-extrabold text-slate-950">{dashboard.project.name}</h2>
+            <p className="text-sm font-semibold text-slate-500">{dashboard.project.clientName} - {dashboard.project.framework || '-'}</p>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-bold text-slate-600 md:grid-cols-4">
+              <span>Industry: {dashboard.project.industry || '-'}</span>
+              <span>Manager: {dashboard.project.auditManager || '-'}</span>
+              <span>Start: {formatDate(dashboard.project.startDate)}</span>
+              <span>Due: {formatDate(dashboard.project.endDate)}</span>
+              <span>Phase: {dashboard.project.currentPhase || '-'}</span>
+              <span>Status: {dashboard.project.status}</span>
             </div>
-          ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button className="rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">Edit Project</button>
+            <button onClick={() => window.print()} className="rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">Export Dashboard</button>
+            <Link to="/repository" className="rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">Repository</Link>
+            <button className="rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white">AI Assistant</button>
+          </div>
+        </div>
+        <div className="mt-5">
+          <div className="mb-2 flex justify-between text-xs font-bold text-slate-600"><span>Overall Progress</span><span>{kpis.overallProgress || 0}%</span></div>
+          <div className="h-3 rounded-full bg-slate-200"><div className="h-full rounded-full bg-blue-600" style={{ width: `${kpis.overallProgress || 0}%` }} /></div>
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-lg border border-slate-200 bg-white p-5">
-          <h3 className="font-extrabold text-slate-950">Team Members</h3>
-          <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-            {team.map((member) => (
-              <div key={member.id} className="rounded border border-slate-100 bg-slate-50 px-3 py-2 text-sm">
-                <p className="font-bold text-slate-900">{member.name}</p>
-                <p className="text-xs text-slate-500">{member.role} {member.designation ? `- ${member.designation}` : ''}</p>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,3fr)_320px]">
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600">Auditie AI</p>
+              <h3 className="mt-1 text-xl font-extrabold text-slate-950">Good Morning.</h3>
+              <p className="mt-2 text-sm font-semibold text-slate-700">Current audit health is <span className="font-extrabold">{healthLabel}</span>.</p>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-bold text-slate-700">
+                <span>{kpis.areasUnderReview || 0} pending reviews</span>
+                <span>{kpis.overdueItems || 0} overdue items</span>
+                <span>{kpis.highRiskObservations || 0} high-risk observations</span>
+                <span>{dashboard.milestones.current || 'No current milestone'}</span>
               </div>
-            ))}
+              <div className="mt-4 rounded border border-blue-100 bg-white px-3 py-2 text-sm font-semibold text-slate-500">Ask Auditie AI...</div>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-5">
+              <div className="flex items-center justify-between"><div><p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Audit Health</p><h3 className="mt-1 text-xl font-extrabold text-slate-950">{healthLabel}</h3></div><span className={cn('h-12 w-12 rounded-full', healthTone)} /></div>
+              <p className="mt-3 text-3xl font-extrabold text-slate-950">{dashboard.health.score}%</p>
+              <MiniBar value={dashboard.health.score} tone={healthTone} />
+              <div className="mt-3 space-y-1">{dashboard.health.reasons.map((reason) => <p key={reason} className="text-xs font-semibold text-slate-600">{reason}</p>)}</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <OverviewKpi label="Overall Progress" value={kpis.overallProgress || 0} />
+            <OverviewKpi label="Areas Completed" value={kpis.completedAreas || 0} tone="bg-emerald-500" />
+            <OverviewKpi label="Under Review" value={kpis.areasUnderReview || 0} tone="bg-amber-500" />
+            <OverviewKpi label="Pending Checklist Rows" value={kpis.pendingChecklistRows || 0} tone="bg-slate-500" />
+            <OverviewKpi label="Evidence Linked" value={kpis.evidenceLinked || 0} tone="bg-blue-500" to="/repository" />
+            <OverviewKpi label="Open Observations" value={kpis.observationsOpen || 0} tone="bg-rose-500" />
+            <OverviewKpi label="CAPA Open" value={kpis.capaOpen || 0} tone="bg-orange-500" />
+            <OverviewKpi label="Open Queries" value={kpis.queriesOpen || 0} tone="bg-violet-500" />
+            <OverviewKpi label="High Risk Findings" value={kpis.highRiskObservations || 0} tone="bg-rose-700" />
+            <OverviewKpi label="Overdue Tasks" value={kpis.overdueItems || 0} tone="bg-red-600" />
+            <OverviewKpi label="Milestones Completed" value={kpis.milestonesCompleted || 0} tone="bg-emerald-500" />
+            <OverviewKpi label="CAPA Closed" value={kpis.capaClosed || 0} tone="bg-emerald-500" />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <div className="rounded-lg border border-slate-200 bg-white p-5">
+              <h3 className="font-extrabold text-slate-950">Framework Coverage</h3>
+              <div className="mt-3 space-y-3">{dashboard.frameworkCoverage.length === 0 && <p className="text-sm font-semibold text-slate-500">No framework selected.</p>}{dashboard.frameworkCoverage.map((item) => <div key={item.framework} className="rounded border border-slate-100 p-3"><div className="flex justify-between text-sm font-extrabold"><span>{item.framework}</span><span>{item.readiness}%</span></div><MiniBar value={item.readiness} /><div className="mt-2 grid grid-cols-5 gap-1 text-[10px] font-bold text-slate-500"><span>Def {item.definition}%</span><span>Impl {item.implementation}%</span><span>Test {item.testing}%</span><span>Ev {item.evidence}%</span><span>Rev {item.review}%</span></div></div>)}</div>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-5">
+              <h3 className="font-extrabold text-slate-950">Checklist Summary</h3>
+              <div className="mt-3 grid grid-cols-2 gap-2"><Metric label="Total Rows" value={dashboard.checklists.totalRows} /><Metric label="Completed" value={dashboard.checklists.completedRows} /><Metric label="Pending" value={dashboard.checklists.pendingRows} /><Metric label="Non-Compliant" value={dashboard.checklists.nonCompliantRows} /></div>
+              {dashboard.checklists.totalRows === 0 ? <p className="mt-3 rounded border border-dashed border-slate-200 p-3 text-center text-sm font-semibold text-slate-500">No checklist rows generated yet</p> : <div className="mt-3"><MiniBar value={dashboard.checklists.completionPercent} /></div>}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white">
+            <div className="border-b border-slate-200 p-4"><h3 className="font-extrabold text-slate-950">Milestone Status</h3></div>
+            <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="bg-slate-50 text-[10px] uppercase tracking-widest text-slate-500"><tr><th className="px-3 py-3">Milestone</th><th className="px-3 py-3">Owner</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Due</th><th className="px-3 py-3">Progress</th><th className="px-3 py-3">Action</th><th className="px-3 py-3">Open</th></tr></thead><tbody className="divide-y divide-slate-100">{dashboard.milestones.rows.slice(0, 8).map((item) => <tr key={item.id}><td className="px-3 py-3 font-bold">{item.milestone}</td><td className="px-3 py-3">{item.owner || '-'}</td><td className="px-3 py-3"><span className={statusPill(item.status)}>{item.status}</span></td><td className="px-3 py-3">{formatDate(item.dueDate)}</td><td className="px-3 py-3"><MiniBar value={item.progress} /></td><td className="px-3 py-3 text-xs font-semibold">{item.pendingActions}</td><td className="px-3 py-3"><Link className="rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white" to={`/projects/${project.id}/milestones/${item.id}`}>Open</Link></td></tr>)}</tbody></table></div>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white">
+            <div className="border-b border-slate-200 p-4"><h3 className="font-extrabold text-slate-950">Audit Areas</h3></div>
+            <div className="grid grid-cols-1 gap-3 p-4 lg:grid-cols-2">{dashboard.areas.length === 0 && <p className="text-sm font-semibold text-slate-500">No audit areas match the selected filters.</p>}{dashboard.areas.map((area) => <Link key={area.areaId} to={`/projects/${project.id}/areas/${area.areaId}`} className="rounded border border-slate-200 p-3 hover:border-blue-300"><div className="flex items-center justify-between"><p className="font-extrabold text-slate-950">{area.name}</p><span className={statusPill(area.status)}>{area.status}</span></div><p className="mt-1 text-xs font-semibold text-slate-500">Maker: {area.maker || '-'} - Reviewer: {area.reviewer || '-'}</p><div className="mt-3"><MiniBar value={area.progress} /></div><div className="mt-2 grid grid-cols-3 gap-2 text-[10px] font-bold text-slate-500"><span>{area.pendingRows} pending</span><span>{area.openObservations} obs</span><span>{area.evidenceCount} evidence</span></div></Link>)}</div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+            <div className="rounded-lg border border-slate-200 bg-white p-5"><h3 className="font-extrabold">Observations</h3><div className="mt-3 grid grid-cols-2 gap-2"><Metric label="Open" value={dashboard.observations.open} /><Metric label="Closed" value={dashboard.observations.closed} /><Metric label="High" value={dashboard.observations.bySeverity.high} /><Metric label="Pending Review" value={dashboard.observations.pendingReview} /></div></div>
+            <div className="rounded-lg border border-slate-200 bg-white p-5"><h3 className="font-extrabold">CAPA</h3><div className="mt-3 grid grid-cols-2 gap-2"><Metric label="Open" value={dashboard.capa.open} /><Metric label="Closed" value={dashboard.capa.closed} /><Metric label="Overdue" value={dashboard.capa.overdue} /><Metric label="Closure" value={`${dashboard.capa.closurePercent}%`} /></div></div>
+            <div className="rounded-lg border border-slate-200 bg-white p-5"><h3 className="font-extrabold">Queries</h3><div className="mt-3 grid grid-cols-2 gap-2"><Metric label="Open" value={dashboard.queries.open} /><Metric label="Closed" value={dashboard.queries.closed} /><Metric label="Overdue" value={dashboard.queries.overdue} /><Metric label="Pending Client" value={dashboard.queries.pendingClientResponse} /></div></div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <div className="rounded-lg border border-slate-200 bg-white p-5"><h3 className="font-extrabold text-slate-950">Team Performance</h3><div className="mt-3 overflow-x-auto"><table className="min-w-full text-sm"><thead className="text-left text-[10px] uppercase tracking-widest text-slate-500"><tr><th className="py-2">Auditor</th><th>Areas</th><th>Checklist %</th><th>Reviews</th><th>Workload</th></tr></thead><tbody>{dashboard.team.map((member) => <tr key={member.userId} className="border-t"><td className="py-2 font-bold">{member.name}</td><td>{member.assignedAreas}</td><td>{member.checklistRows ? Math.round((member.completedRows / member.checklistRows) * 100) : 0}%</td><td>{member.pendingReviews}</td><td>{member.workloadPercent}%</td></tr>)}</tbody></table></div></div>
+            <div className="rounded-lg border border-slate-200 bg-white p-5"><h3 className="font-extrabold text-slate-950">Recent Activities</h3><div className="mt-3 space-y-2">{dashboard.recentActivity.length === 0 && <p className="text-sm font-semibold text-slate-500">No meaningful activity yet.</p>}{dashboard.recentActivity.map((activity) => <div key={activity.id} className="rounded border border-slate-100 p-2"><p className="text-sm font-bold">{activity.message}</p><p className="text-[10px] font-semibold uppercase text-slate-400">{activity.user} - {formatDate(activity.createdAt)}</p></div>)}</div></div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <div className="rounded-lg border border-slate-200 bg-white p-5"><h3 className="font-extrabold">Upcoming Deadlines</h3><div className="mt-3 grid grid-cols-2 gap-2"><Metric label="Next Milestone" value={dashboard.deadlines.nextMilestone?.name || '-'} /><Metric label="CAPA Due" value={formatDate(dashboard.deadlines.capaDue?.dueDate)} /><Metric label="Billing Due" value={formatDate(dashboard.deadlines.billingDue?.dueDate)} /><Metric label="Late Tasks" value={dashboard.deadlines.lateTasks} /></div></div>
+            <div className="rounded-lg border border-slate-200 bg-white p-5"><h3 className="font-extrabold">Repository Snapshot</h3><div className="mt-3 grid grid-cols-2 gap-2"><Metric label="Folders" value={dashboard.repository.folders} /><Metric label="Files" value={dashboard.repository.files} /><Metric label="Recently Added" value={dashboard.repository.recentlyAdded} /><Metric label="Evidence Linked" value={dashboard.repository.evidenceLinked} /></div><Link to="/repository" className="mt-3 inline-flex rounded bg-slate-950 px-3 py-2 text-xs font-bold text-white">Open Repository</Link></div>
           </div>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-5">
-          <h3 className="font-extrabold text-slate-950">Client Contact Details</h3>
-          <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-slate-700 md:grid-cols-2">
-            <p><b>Email:</b> {project.email || '-'}</p>
-            <p><b>Telephone:</b> {project.telephone || '-'}</p>
-            <p><b>CIN:</b> {project.cinNo || '-'}</p>
-            <p><b>PAN:</b> {project.pan || '-'}</p>
-            <p><b>GST:</b> {project.gst || '-'}</p>
-            <p><b>Website:</b> {project.website || '-'}</p>
-          </div>
-        </div>
+
+        <aside className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 xl:sticky xl:top-24 xl:self-start">
+          <div className="flex items-center justify-between"><h3 className="font-extrabold text-slate-950">Project Filters</h3><button onClick={() => setFilters({ area: '', owner: '', reviewer: '', milestone: '', status: '', severity: '', dueDateRange: '' })} className="text-xs font-bold text-blue-600">Reset</button></div>
+          <Field label="Framework"><select className={inputClass} disabled><option>{dashboard.project.framework || 'All'}</option></select></Field>
+          <Field label="Area"><select className={inputClass} value={filters.area} onChange={(e) => setFilters((current) => ({ ...current, area: e.target.value }))}><option value="">All Areas</option>{dashboard.filters.areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}</select></Field>
+          <Field label="Owner"><select className={inputClass} value={filters.owner} onChange={(e) => setFilters((current) => ({ ...current, owner: e.target.value }))}><option value="">All Owners</option>{dashboard.filters.owners.map((owner) => <option key={owner.id} value={owner.id}>{owner.name}</option>)}</select></Field>
+          <Field label="Reviewer"><select className={inputClass} value={filters.reviewer} onChange={(e) => setFilters((current) => ({ ...current, reviewer: e.target.value }))}><option value="">All Reviewers</option>{dashboard.filters.reviewers.map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.name}</option>)}</select></Field>
+          <Field label="Milestone"><select className={inputClass} value={filters.milestone} onChange={(e) => setFilters((current) => ({ ...current, milestone: e.target.value }))}><option value="">All Milestones</option>{dashboard.filters.milestones.map((milestone) => <option key={milestone.id} value={milestone.id}>{milestone.name}</option>)}</select></Field>
+          <Field label="Status"><select className={inputClass} value={filters.status} onChange={(e) => setFilters((current) => ({ ...current, status: e.target.value }))}><option value="">All Statuses</option>{dashboard.filters.statuses.map((status) => <option key={status} value={status}>{status}</option>)}</select></Field>
+          <Field label="Observation Severity"><select className={inputClass} value={filters.severity} onChange={(e) => setFilters((current) => ({ ...current, severity: e.target.value }))}><option value="">All Severity</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></Field>
+          <Field label="Due Date"><select className={inputClass} value={filters.dueDateRange} onChange={(e) => setFilters((current) => ({ ...current, dueDateRange: e.target.value }))}><option value="">All Dates</option><option value="overdue">Overdue</option><option value="next7">Next 7 days</option><option value="next30">Next 30 days</option></select></Field>
+          {loading && <p className="rounded bg-slate-50 p-2 text-center text-xs font-bold text-slate-500">Refreshing...</p>}
+        </aside>
       </div>
     </div>
   );
