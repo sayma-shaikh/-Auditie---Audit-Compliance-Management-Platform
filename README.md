@@ -512,7 +512,6 @@ AI is intended to support auditors, not replace professional judgment.
 
 ## Screenshots
 
-> Replace these placeholders with real product screenshots as the interface stabilizes.
 
 | Area | Preview |
 | --- | --- |
@@ -698,7 +697,7 @@ Auditie helps consultancies deliver faster, more consistent, and more traceable 
 
 ## License
 
-This project is licensed under the **MIT License**.
+This project is licensed under the **Shaikh Sayma**.
 
 ---
 
