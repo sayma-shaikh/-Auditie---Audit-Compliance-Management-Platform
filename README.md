@@ -1,548 +1,464 @@
-# Auditie - Audit & Compliance Management Platform
+<div align="center">
 
-![Status](https://img.shields.io/badge/status-active%20development-blue)
-![Frontend](https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-61DAFB)
-![Backend](https://img.shields.io/badge/backend-Node.js%20%2B%20Express-339933)
-![ORM](https://img.shields.io/badge/ORM-Prisma-2D3748)
-![License](https://img.shields.io/badge/license-MIT-green)
+  <img src="screenshots/logo-placeholder.png" alt="Auditie Logo" width="110" />
 
-**Auditie** is an enterprise audit management platform built for IT Audit and Compliance consulting firms. It digitizes the complete engagement lifecycle for audits such as ISO 27001, ISO 27701, SOC 2, ITGC, VAPT, PCI DSS, HIPAA, NIST, internal audits, and client-specific compliance reviews.
+  # Auditie
 
-Instead of managing work across hundreds of Excel files, email trails, Google Drive folders, Word reports, and manual trackers, Auditie gives audit teams one structured workspace for projects, milestones, audit areas, working papers, evidence, observations, CAPA, reporting, users, and audit logs.
+  ### Enterprise Audit & Compliance Management Platform
 
-> Auditie is designed from an auditor's perspective: assign areas, complete working papers, upload evidence, submit to reviewers, raise observations, track CAPA, generate reports, and preserve a defensible audit trail.
+  **Replace Excel. Standardize audits. Accelerate compliance.**
+
+  Auditie is a premium audit execution workspace for IT Audit and Compliance consultancies managing ISO 27001, SOC 2, ITGC, VAPT, PCI DSS, HIPAA, NIST, and client-specific engagements.
+
+  <br />
+
+  ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+  ![TypeScript](https://img.shields.io/badge/TypeScript-0F172A?style=for-the-badge&logo=typescript&logoColor=3178C6)
+  ![Node.js](https://img.shields.io/badge/Node.js-0B1220?style=for-the-badge&logo=nodedotjs&logoColor=5FA04E)
+  ![Express](https://img.shields.io/badge/Express-111827?style=for-the-badge&logo=express&logoColor=FFFFFF)
+  ![Prisma](https://img.shields.io/badge/Prisma-111827?style=for-the-badge&logo=prisma&logoColor=FFFFFF)
+  ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-0F172A?style=for-the-badge&logo=postgresql&logoColor=4169E1)
+
+  ![ISO 27001](https://img.shields.io/badge/ISO_27001-2563EB?style=flat-square)
+  ![SOC 2](https://img.shields.io/badge/SOC_2-0F766E?style=flat-square)
+  ![ITGC](https://img.shields.io/badge/ITGC-7C3AED?style=flat-square)
+  ![VAPT](https://img.shields.io/badge/VAPT-E11D48?style=flat-square)
+  ![MIT](https://img.shields.io/badge/License-MIT-16A34A?style=flat-square)
+  ![Version](https://img.shields.io/badge/version-1.0.0-blue?style=flat-square)
+  ![Stars](https://img.shields.io/github/stars/sayma-shaikh/-Auditie---Audit-Compliance-Management-Platform?style=flat-square)
+  ![Forks](https://img.shields.io/github/forks/sayma-shaikh/-Auditie---Audit-Compliance-Management-Platform?style=flat-square)
+  ![Last Commit](https://img.shields.io/github/last-commit/sayma-shaikh/-Auditie---Audit-Compliance-Management-Platform?style=flat-square)
+
+  <br />
+
+  [![Live Demo](https://img.shields.io/badge/Live_Demo-Launch-2563EB?style=for-the-badge&logo=vercel&logoColor=white)](#)
+  [![Documentation](https://img.shields.io/badge/Documentation-Read-111827?style=for-the-badge&logo=readthedocs&logoColor=white)](#installation)
+  [![Report Issue](https://img.shields.io/badge/Report_Issue-GitHub-E11D48?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sayma-shaikh/-Auditie---Audit-Compliance-Management-Platform/issues)
+  [![Star Repository](https://img.shields.io/badge/Star_Repository-FFD43B?style=for-the-badge&logo=github&logoColor=111827)](https://github.com/sayma-shaikh/-Auditie---Audit-Compliance-Management-Platform)
+
+</div>
 
 ---
 
-## Why Auditie Exists
+<div align="center">
 
-Audit and compliance consultancies often run complex engagements using tools that were never designed for audit execution.
+  <img src="screenshots/dashboard.png" alt="Auditie Dashboard Screenshot" width="900" />
 
-| Common Problem | Impact on Audit Teams |
+  <p><strong>Dashboard preview</strong> - centralized audit health, review queue, workload, milestones, and project activity.</p>
+
+</div>
+
+---
+
+## Why Auditie?
+
+Traditional IT audit teams still run serious compliance work through disconnected tools.
+
+| The old way | The Auditie way |
 | --- | --- |
-| Hundreds of Excel files | No single source of truth for checklists, samples, observations, or trackers |
-| Version control issues | Teams lose time reconciling duplicate files and outdated working papers |
-| Evidence scattered in email and Drive | Reviewers cannot easily trace evidence back to the exact checklist item |
-| Manual checklist tracking | Progress is hard to monitor across areas and auditors |
-| Manual observation and CAPA registers | Findings, owners, due dates, and closure status become disconnected |
-| Weak reviewer workflow | Makers submit work, but reviewers lack a clean queue and context |
-| No centralized dashboard | Managers cannot see project health, delays, or workload quickly |
-| Limited audit trail | Approval, evidence, and checklist changes are difficult to defend |
-| Duplicate work across frameworks | Similar controls are repeatedly recreated for each engagement |
-| Poor collaboration | Audit managers, auditors, and reviewers work in silos |
+| Excel files for checklists, samples, observations, and trackers | One structured audit execution workspace |
+| Email threads for evidence and review comments | Evidence and review decisions linked to exact work items |
+| Google Drive folders with unclear ownership | Project repository with traceable evidence linking |
+| Word documents edited manually | Template-driven document and report generation |
+| Manual reviewer follow-up | Maker-reviewer workflow with clear queues |
+| Progress updated by guesswork | Progress driven by milestones, areas, and working papers |
+| Scattered observations and CAPA | Connected observation and remediation registers |
+| Weak audit trail | Logged activity across projects, evidence, reviews, and users |
 
-Auditie replaces this fragmented way of working with a controlled, auditable, and reusable audit execution system.
+> Auditie turns audit delivery into a controlled, reviewable, and repeatable operating system for consultancies.
 
 ---
 
-## Product Overview
+## Feature Showcase
 
-Auditie manages an audit engagement from planning to closure:
+| 📊 Dashboard | 🧭 Milestone Tracker | 📋 Checklist Engine |
+| --- | --- | --- |
+| Real-time project health, team workload, deadlines, review queue, and recent activity. | Workflow-based audit milestones with owners, required actions, dates, progress, and workspace routes. | Question checklists and Excel-like table working papers for real audit execution. |
 
-```text
-Client
-  |
-  v
-Project Created
-  |
-  v
-Milestones Generated
-  |
-  v
-Areas Assigned
-  |
-  v
-Checklists / Working Papers Generated
-  |
-  v
-Evidence Uploaded
-  |
-  v
-Reviewer Verification
-  |
-  v
-Observations Created
-  |
-  v
-CAPA Tracked
-  |
-  v
-Reports Generated
-  |
-  v
-Project Closed
+| 📁 Repository | 📎 Evidence | 🔍 Observations |
+| --- | --- | --- |
+| Central project repository with folders, upload, Google Drive integration, and evidence linking. | Attach evidence to checklist rows, audit areas, observations, milestones, and repository records. | Capture findings with severity, clause, owner, reviewer, evidence, and status. |
+
+| ✅ CAPA | 📝 Reports | 🧩 Templates |
+| --- | --- | --- |
+| Track root cause, corrective action, preventive action, responsible user, due date, and closure. | Manage draft reports, final reports, submissions, review comments, and supporting files. | Generate policies, procedures, standards, registers, and audit documents from reusable templates. |
+
+| 👥 Users | 🕒 Audit Logs | 🤖 AI Assistant |
+| --- | --- | --- |
+| Assign makers, reviewers, audit managers, tasks, and review queues with performance visibility. | Every meaningful action is logged for defensibility and traceability. | Planned copilot for audit guidance, evidence gap detection, observations, CAPA, and report drafting. |
+
+---
+
+## Product Modules
+
+### 📊 Dashboard
+
+High-level operational control for audit managers.
+
+| Capability | Description |
+| --- | --- |
+| Audit health | See active, delayed, pending, and completed work |
+| Team workload | Understand assignment distribution and bottlenecks |
+| Review queue | Track pending maker-reviewer actions |
+| Recent activity | See changes across projects, evidence, and users |
+
+![Dashboard](screenshots/dashboard.png)
+
+---
+
+### 🗂️ Projects
+
+Every client engagement becomes a structured project.
+
+| Project Data | Managed In Auditie |
+| --- | --- |
+| Client profile | Company details, framework, industry, dates, and scope |
+| Audit team | Audit Manager, makers, reviewers, and assigned users |
+| Delivery state | Status, progress, areas, milestones, repository, and reports |
+
+![Projects](screenshots/projects.png)
+
+---
+
+### 🧭 Milestones
+
+Milestones are dynamic audit workspaces, not generic cards.
+
+| Milestone | Workspace |
+| --- | --- |
+| Review Planning | Planning checklist and required documents |
+| Kick-off Meeting | Meeting agenda, attendees, MoM, and action items |
+| Data Requirement Roll Out | Request tracker |
+| RCM | Risk and Control Matrix tracker |
+| Sampling | Population and sample tracker |
+| Review Execution | Area execution summary |
+| Draft / Final Reports | Report versions, review, and submission tracking |
+
+![Timeline](screenshots/timeline.png)
+
+---
+
+### 👤 Assignments
+
+Assign audit areas to makers and reviewers with project-level oversight.
+
+| Assignment Field | Purpose |
+| --- | --- |
+| Area | HR, Admin, Application, System Verification, AWS, Linux, Firewall, and more |
+| Maker | Auditor responsible for execution |
+| Reviewer | Reviewer or Audit Manager fallback |
+| Due date | Planned completion date |
+| Status | Not started, in progress, submitted, approved, rework |
+
+![Assignments](screenshots/assignments.png)
+
+---
+
+### 📋 Checklist Engine
+
+Auditie supports two execution modes.
+
+| Mode | Best For | Experience |
+| --- | --- | --- |
+| Question View | Interviews, walkthroughs, physical verification, governance review | Question cards with response, remarks, observation, and evidence |
+| Table View | HR testing, UAM, asset review, vendor review, backup review, change review | Spreadsheet-style rows, columns, filters, import, export, and row evidence |
+
+![Checklist](screenshots/checklist.png)
+
+---
+
+### 📁 Repository & Evidence
+
+The repository is the evidence backbone.
+
+| Feature | Detail |
+| --- | --- |
+| Folder hierarchy | Project evidence organized like a professional audit file |
+| Evidence linking | Link files to rows, areas, observations, milestones, and reports |
+| Google Drive | Connect Drive as an evidence source |
+| Uploads | Bring local evidence into the project repository |
+
+![Repository](screenshots/repository.png)
+
+---
+
+### 🔍 Observations
+
+Capture and track audit findings from execution to closure.
+
+| Observation Field | Purpose |
+| --- | --- |
+| Title and description | Clear finding narrative |
+| Severity | Risk-based prioritization |
+| Clause / control | Framework traceability |
+| Evidence | Proof supporting the finding |
+| Owner and reviewer | Accountability |
+| Status | Lifecycle tracking |
+
+![Observations](screenshots/observations.png)
+
+---
+
+### ✅ CAPA
+
+Move findings into remediation governance.
+
+| CAPA Element | Tracked |
+| --- | --- |
+| Root cause | Why the issue occurred |
+| Corrective action | Immediate fix |
+| Preventive action | Future prevention |
+| Responsible person | Owner accountability |
+| Verification | Closure validation |
+
+![CAPA](screenshots/capa.png)
+
+---
+
+### 📝 Reports
+
+Manage report lifecycle from draft to final submission.
+
+| Report Workflow | Description |
+| --- | --- |
+| Draft preparation | Upload and track report versions |
+| Review | Capture review comments and status |
+| Final report | Manage final version and approval |
+| Submission | Track submitted-to, date, mode, and acknowledgement |
+
+![Reports](screenshots/reports.png)
+
+---
+
+### 🧩 Templates
+
+Automate reusable audit and compliance documents.
+
+| Template Type | Examples |
+| --- | --- |
+| Policies | ISMS, HR, access control, information security |
+| Procedures | Backup, incident, change, user access |
+| Registers | Risk, asset, vendor, incident, CAPA |
+| Reports | Audit report, executive summary, observation report |
+
+![Templates](screenshots/templates.png)
+
+---
+
+### 👥 Users
+
+Track work allocation and team performance.
+
+| Metric | Value |
+| --- | --- |
+| Assigned tasks | Visibility over workload |
+| Completed work | Delivery tracking |
+| Pending reviews | Reviewer queue |
+| Overdue work | Management action |
+| Average completion time | Performance insight |
+
+![Users](screenshots/users.png)
+
+---
+
+### 🕒 Audit Logs
+
+Every important action is recorded.
+
+| Logged Activity | Example |
+| --- | --- |
+| Evidence | File uploaded or linked |
+| Checklist | Response updated or submitted |
+| Review | Approved, rejected, or rework requested |
+| Project | Status, milestone, or assignment changed |
+| User | Login and key user activity |
+
+![Audit Logs](screenshots/audit-logs.png)
+
+---
+
+### 🤖 AI Assistant
+
+Planned AI capabilities for audit acceleration.
+
+| Planned Capability | Use Case |
+| --- | --- |
+| Audit guidance | ISO and control interpretation |
+| Evidence gap detection | Identify missing proof |
+| Observation drafting | Convert issues into professional findings |
+| CAPA suggestions | Recommend remediation actions |
+| Report drafting | Assist with audit report language |
+
+![AI Assistant](screenshots/ai-assistant.png)
+
+---
+
+## Audit Lifecycle
+
+```mermaid
+flowchart TD
+  A[Client] --> B[Project Created]
+  B --> C[Planning]
+  C --> D[Area Allocation]
+  D --> E[Checklist Generation]
+  E --> F[Evidence Upload]
+  F --> G[Maker Submission]
+  G --> H[Reviewer Verification]
+  H --> I{Approved?}
+  I -- No --> J[Rework]
+  J --> F
+  I -- Yes --> K[Observations]
+  K --> L[CAPA]
+  L --> M[Reports]
+  M --> N[Closure]
 ```
 
 ---
 
-## Core Modules
-
-| Module | Purpose |
-| --- | --- |
-| Dashboard | Overall audit health, workload, deadlines, review queue, and recent activity |
-| Projects | Client engagements, frameworks, team allocation, timelines, status, and progress |
-| Milestones | Audit lifecycle tracker with dynamic milestone workspaces |
-| Audit Areas | Area-wise execution workspaces such as HR, Admin, IT Infrastructure, AWS, Linux, Applications, and more |
-| Checklist Engine | Question-based reviews and spreadsheet-style table working papers |
-| Evidence Repository | Central file and folder workspace with evidence linking |
-| Observations | Finding register with severity, clause, owner, reviewer, and evidence |
-| CAPA | Root cause, corrective action, preventive action, verification, and closure |
-| Queries | Client questions, internal discussions, responses, status, and attachments |
-| Reports | Draft report, final report, observation report, CAPA report, and audit outputs |
-| Templates | Document automation for policies, procedures, standards, and registers |
-| Users | User assignment, review queue, workload, and performance tracking |
-| Audit Logs | Full activity trail for project, checklist, evidence, review, and status changes |
-
----
-
-## Dashboard
-
-The dashboard gives managers a command-center view of audit health:
-
-- Current projects and active engagements
-- Team workload and assigned tasks
-- Delayed activities and upcoming deadlines
-- Review queue and pending approvals
-- Recent audit activity
-- Performance metrics across users and projects
-
-This helps Audit Managers identify bottlenecks before they become project delays.
-
----
-
-## Project Management
-
-Every client engagement is managed as a project. A project contains:
-
-- Client information
-- Framework and audit type
-- Audit timeline
-- Audit team and Audit Manager
-- Makers and reviewers
-- Project status and progress
-- Audit areas
-- Milestones
-- Evidence repository
-- Queries, observations, CAPA, and reports
-
-Projects act as the top-level container for the entire engagement.
-
----
-
-## Milestone Management
-
-Auditie uses workflow-based milestones instead of simple status cards. Milestones represent real audit lifecycle activities such as:
-
-- Review Planning
-- Overall Project Management
-- Team Briefing Meeting
-- Review Kick-off Meeting
-- Area-wise Review Checklist
-- Data Requirement Roll Out
-- Process Walkthrough
-- Review Risk & Control Matrix
-- Data Analytics / Sampling
-- Review Execution
-- Weekly Status Update
-- Interim Review
-- Queries Discussion
-- Draft Report Preparation and Review
-- Final Report Preparation and Review
-- Review Closing Meeting
-- Review Committee Meeting
-
-Each milestone can have:
-
-- Responsible owner
-- Status
-- Target date
-- Started date
-- Completion date
-- Progress
-- Required action
-- Repository attachments
-- Remarks
-- Comments
-- History
-
-Milestones open dedicated workspaces. For example, Review Planning opens a planning checklist, Kick-off opens a meeting workspace, Data Requirement Roll Out opens a request tracker, and RCM opens a Risk & Control Matrix tracker.
-
----
-
-## Area Management
-
-Projects are divided into audit areas. Examples include:
-
-- HR
-- Admin
-- Physical Security
-- IT Infrastructure
-- AWS
-- Azure
-- Network
-- Applications
-- Database
-- Vendor Management
-- Password Policy
-- Linux
-- Firewall
-- Policies Review
-
-Each audit area has its own workspace for maker execution, evidence, observations, review, and history.
-
----
-
-## Dynamic Checklist Engine
-
-Auditie supports two checklist execution modes.
-
-### Question View
-
-Question-based checklists are useful for:
-
-- Interviews
-- Walkthroughs
-- Governance reviews
-- Physical verification
-- Policy and procedure reviews
-
-Auditors can answer checklist questions, add observations, attach evidence, and submit the area for review.
-
-### Table View
-
-Table-based checklists turn audit execution into spreadsheet-style working papers. They support:
-
-- Dynamic columns
-- Dynamic rows
-- Search
-- Filters
-- Inline editing
-- Row status
-- Row comments
-- Evidence per row
-- Excel import
-- Excel export
-
-This is designed for audit sheets such as HR reviews, user access reviews, vendor reviews, asset verification, backup review, change management, incident registers, and other sample-based testing.
-
----
-
-## Evidence Management
-
-Evidence can be attached to checklist items, table rows, audit areas, observations, milestones, and repository records.
-
-Supported evidence sources include:
-
-- Central repository
-- Local device uploads
-- Google Drive integration
-
-Evidence workflows support:
-
-- Preview
-- Download
-- Version history
-- Replace
-- Delete
-- Link to working papers
-- Link to milestone workspaces
-
-This ensures reviewers can trace every conclusion back to its supporting evidence.
-
----
-
-## Repository
-
-The Repository module works like an audit-focused document workspace.
-
-Features include:
-
-- Folder hierarchy
-- File upload
-- Search
-- Versioning
-- File preview
-- Evidence linking
-- Google Drive integration
-- Shared project evidence store
-
-The repository reduces dependency on scattered Drive folders and manual evidence references.
-
----
-
-## Observation Register
-
-Observations can be created from checklist findings and audit area work.
-
-An observation captures:
-
-- Title
-- Description
-- Severity
-- Clause or control reference
-- Audit area
-- Owner
-- Reviewer
-- Evidence
-- Status
-
-This gives teams one place to track findings from identification through review and closure.
-
----
-
-## CAPA Management
-
-Each observation can lead to CAPA tracking.
-
-CAPA records can track:
-
-- Root cause
-- Corrective action
-- Preventive action
-- Due date
-- Responsible person
-- Verification
-- Closure
-
-This helps consultancies move beyond reporting findings and into remediation governance.
-
----
-
-## Maker-Reviewer Workflow
-
-Auditie supports a maker-reviewer workflow designed for audit quality control.
-
-| Role | Responsibilities |
-| --- | --- |
-| Maker | Completes checklist, updates working papers, uploads evidence, and creates observations |
-| Reviewer | Reviews submitted work, adds comments, requests rework, approves, or rejects |
-| Audit Manager | Oversees project status, area allocation, reviewer assignment, milestones, and delivery |
-
-The workflow is designed so users do not review their own work. Reviewer queues and review statuses help ensure submitted work is visible and actionable.
-
----
-
-## Timeline
-
-The Timeline is a project manager's control center. It shows:
-
-- Current milestone
-- Pending milestones
-- Completed milestones
-- Delayed or overdue milestones
-- Owners
-- Target dates
-- Started and completed dates
-- Progress
-- Required action
-- Open workspace action
-
-Rather than hiding work inside static cards, each milestone opens the right workspace for that audit activity.
-
----
-
-## Queries
-
-The Query module tracks questions and discussions raised during the engagement.
-
-It can be used for:
-
-- Client questions
-- Internal discussions
-- Assigned responses
-- Status tracking
-- Due dates
-- Attachments and evidence references
-
-This avoids losing important audit discussions in email threads.
-
----
-
-## Reporting
-
-Auditie supports report lifecycle tracking for:
-
-- Draft Report
-- Final Report
-- Observation Report
-- Executive Summary
-- CAPA Report
-- Audit Report
-
-Report workspaces can track versions, review comments, submission status, and supporting repository documents.
-
----
-
-## Template Engine
-
-The Template Engine automates document generation for:
-
-- Policies
-- Procedures
-- Standards
-- Registers
-- Audit documents
-
-Templates can replace values such as:
-
-- Company name
-- Logo
-- Address
-- Dates
-- Metadata
-- Project details
-
-This reduces repetitive manual editing in Word files and helps standardize consultancy deliverables.
-
----
-
-## Users & Performance
-
-Auditie tracks user work across engagements, including:
-
-- Assigned tasks
-- Completed tasks
-- Reviews pending
-- Average completion time
-- Overdue work
-- Workload distribution
-- User performance analytics
-
-This helps managers allocate work realistically and identify overload early.
-
----
-
-## Audit Logs
-
-Every important activity is logged, including:
-
-- File uploaded
-- Evidence linked
-- Checklist updated
-- Observation created
-- Reviewer approved
-- Reviewer requested rework
-- Project status changed
-- Milestone updated
-- User assignment changed
-
-The audit log provides traceability for both internal governance and client-facing defensibility.
-
----
-
-## Notifications
-
-Auditie is designed to notify users when action is needed, such as:
-
-- Task assigned
-- Review pending
-- Evidence uploaded
-- Observation returned
-- CAPA overdue
-- Milestone delayed
-
-Notification workflows are part of the product roadmap and are intended to reduce manual follow-up by Audit Managers.
-
----
-
-## AI Roadmap
-
-Planned AI capabilities include:
-
-- Audit assistant
-- ISO guidance
-- Control recommendations
-- Observation drafting
-- CAPA suggestions
-- Evidence gap detection
-- Report writing assistance
-- Checklist quality review
-
-AI is intended to support auditors, not replace professional judgment.
-
----
-
-## Architecture
-
-```text
-┌─────────────────────────────────────────────────────────┐
-│                     React Frontend                      │
-│        Projects • Areas • Checklists • Repository       │
-└───────────────────────────┬─────────────────────────────┘
-                            │
-                            v
-┌─────────────────────────────────────────────────────────┐
-│                  Node.js / Express API                  │
-│ Auth • Projects • Milestones • Repository • Templates   │
-└───────────────────────────┬─────────────────────────────┘
-                            │
-                            v
-┌─────────────────────────────────────────────────────────┐
-│                       Prisma ORM                        │
-└───────────────────────────┬─────────────────────────────┘
-                            │
-                            v
-┌─────────────────────────────────────────────────────────┐
-│                    Database Layer                       │
-│      Local development: SQLite • Production: PostgreSQL │
-└─────────────────────────────────────────────────────────┘
-                            │
-                            v
-┌─────────────────────────────────────────────────────────┐
-│                  Storage & Integrations                 │
-│          Local Repository • Google Drive • Uploads      │
-└─────────────────────────────────────────────────────────┘
+## Platform Architecture
+
+```mermaid
+flowchart LR
+  UI[React + TypeScript Frontend] --> API[Node.js + Express API]
+  API --> AUTH[JWT Auth]
+  API --> ORM[Prisma ORM]
+  ORM --> DB[(PostgreSQL / SQLite Dev)]
+  API --> REPO[Repository & Evidence Storage]
+  API --> AUDIT[Audit Execution Engine]
+  AUDIT --> CHECKLIST[Checklist Engine]
+  AUDIT --> REVIEW[Maker-Reviewer Workflow]
+  AUDIT --> REPORTING[Reporting Engine]
+  REPO --> DRIVE[Google Drive Integration]
+  REPORTING --> DOCS[Generated Documents]
+  API -. roadmap .-> AI[AI Assistant]
 ```
+
+---
+
+## Screenshot Gallery
+
+| Module | Preview |
+| --- | --- |
+| Dashboard | ![Dashboard](screenshots/dashboard.png) |
+| Projects | ![Projects](screenshots/projects.png) |
+| Checklist | ![Checklist](screenshots/checklist.png) |
+| Question View | ![Question View](screenshots/question-view.png) |
+| Repository | ![Repository](screenshots/repository.png) |
+| Timeline | ![Timeline](screenshots/timeline.png) |
+| Reports | ![Reports](screenshots/reports.png) |
+| Observations | ![Observations](screenshots/observations.png) |
+| CAPA | ![CAPA](screenshots/capa.png) |
+| Users | ![Users](screenshots/users.png) |
+| Templates | ![Templates](screenshots/templates.png) |
+
+---
+
+## Auditie vs Excel
+
+| Feature | Excel | Auditie |
+| --- | --- | --- |
+| Evidence tracking | Manual links and folders | Evidence attached to exact work items |
+| Version control | Duplicated files | Central records and repository |
+| Reviewer workflow | Email follow-up | Maker-reviewer queues and statuses |
+| Observations | Separate tracker | Integrated observation register |
+| CAPA | Separate tracker | Connected remediation workflow |
+| Repository | Google Drive folders | Project evidence workspace |
+| Reports | Manual Word edits | Report lifecycle and template engine |
+| Timeline | Static tracker | Dynamic milestone workspaces |
+| Audit trail | Limited | Activity logs across the platform |
+| Progress tracking | Manual percentages | Derived from work status |
+| Role management | Informal | Admin, Audit Manager, Maker, Reviewer |
+| Template generation | Copy-paste | Reusable document automation |
+| Multi-framework support | Rebuilt per project | Framework-aware project execution |
+
+---
+
+## Framework Support
+
+| Framework | Status | Use Case |
+| --- | --- | --- |
+| ISO 27001 | Supported | ISMS audits and implementation reviews |
+| ISO 27701 | Supported | Privacy information management reviews |
+| SOC 2 | Supported | Trust services audits and readiness |
+| ITGC | Supported | General IT controls testing |
+| VAPT | Supported | Vulnerability assessment and penetration testing workflow |
+| PCI DSS | Supported | Payment card compliance reviews |
+| NIST | Supported | Cybersecurity framework assessments |
+| HIPAA | Supported | Healthcare compliance reviews |
+| Internal Audit | Supported | Client-specific internal audits |
+| Custom Frameworks | Flexible | Consultancy-specific methodology |
 
 ---
 
 ## Technology Stack
 
-| Layer | Technology |
-| --- | --- |
-| Frontend | React, TypeScript, Vite, Tailwind CSS |
-| Backend | Node.js, Express |
-| ORM | Prisma |
-| Database | SQLite for local development, PostgreSQL target for production deployments |
-| Authentication | JWT |
-| Storage | Local repository, file uploads, Google Drive integration |
-| UI | Tailwind CSS, Lucide icons, TanStack Table |
+### Frontend
+
+![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-0F172A?style=for-the-badge&logo=typescript&logoColor=3178C6)
+![Vite](https://img.shields.io/badge/Vite-111827?style=for-the-badge&logo=vite&logoColor=FFD62E)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-0F172A?style=for-the-badge&logo=tailwindcss&logoColor=38BDF8)
+
+### Backend
+
+![Node.js](https://img.shields.io/badge/Node.js-0B1220?style=for-the-badge&logo=nodedotjs&logoColor=5FA04E)
+![Express](https://img.shields.io/badge/Express-111827?style=for-the-badge&logo=express&logoColor=FFFFFF)
+![Prisma](https://img.shields.io/badge/Prisma-111827?style=for-the-badge&logo=prisma&logoColor=FFFFFF)
+
+### Database, Auth & Storage
+
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-0F172A?style=for-the-badge&logo=postgresql&logoColor=4169E1)
+![SQLite](https://img.shields.io/badge/SQLite_Dev-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
+![JWT](https://img.shields.io/badge/JWT-111827?style=for-the-badge&logo=jsonwebtokens&logoColor=white)
+![Google Drive](https://img.shields.io/badge/Google_Drive-0F172A?style=for-the-badge&logo=googledrive&logoColor=4285F4)
 
 ---
 
-## Screenshots
+## Folder Structure
 
-
-| Area | Preview |
-| --- | --- |
-| Dashboard | `docs/screenshots/dashboard.png` |
-| Projects | `docs/screenshots/projects.png` |
-| Checklist | `docs/screenshots/checklist.png` |
-| Repository | `docs/screenshots/repository.png` |
-| Timeline | `docs/screenshots/timeline.png` |
-| Reports | `docs/screenshots/reports.png` |
-| Observations | `docs/screenshots/observations.png` |
-| CAPA | `docs/screenshots/capa.png` |
+```text
+Auditie/
+├─ src/
+│  ├─ app/                       # App shell, auth, layout, routes
+│  └─ features/
+│     ├─ projects/               # Projects, areas, milestones, workspaces
+│     └─ templates/              # Template automation UI
+├─ server/
+│  ├─ api/                       # Express route modules
+│  ├─ data/                      # Checklist and review program libraries
+│  ├─ integrations/              # Google Drive integration
+│  ├─ middleware/                # Auth middleware
+│  └─ services/                  # Workflow, milestone, performance services
+├─ prisma/
+│  ├─ migrations/                # Database migrations
+│  ├─ schema.prisma              # Prisma schema
+│  └─ seed.ts                    # Seed script
+├─ scripts/                      # Maintenance and smoke-test scripts
+├─ types/                        # Local TypeScript declarations
+├─ server.ts                     # Express/Vite entrypoint
+└─ README.md
+```
 
 ---
 
-## Getting Started
+## Installation
 
-### Prerequisites
+### 1. Clone
 
-- Node.js
-- npm
-- Prisma CLI through project dependencies
+```bash
+git clone https://github.com/sayma-shaikh/-Auditie---Audit-Compliance-Management-Platform.git
+cd "-Auditie---Audit-Compliance-Management-Platform"
+```
 
-### Installation
+### 2. Install
 
 ```bash
 npm install
 ```
 
-### Environment
+### 3. Configure
 
-Create a `.env` file:
+Create `.env`:
 
 ```env
 DATABASE_URL="file:./dev.db"
@@ -550,157 +466,161 @@ JWT_SECRET="change-this-secret"
 NODE_ENV="development"
 ```
 
-Google Drive integration also requires OAuth credentials when enabled.
+Google Drive integration requires OAuth credentials when enabled.
 
-### Database
+### 4. Prepare Database
 
 ```bash
 npx prisma generate
 npx prisma migrate deploy
 ```
 
-### Run Locally
+### 5. Run
 
 ```bash
 npm run dev
 ```
 
-The app runs at:
-
 ```text
 http://localhost:3000
 ```
 
-### Build
+### 6. Build
 
 ```bash
 npm run build
 ```
 
-> Windows note: if the project path contains `&`, npm command shims may fail in some shells. You can run tools directly through Node, for example `node ./node_modules/typescript/bin/tsc --noEmit`.
+> Windows note: if your project path contains `&`, some npm command shims may fail. Use direct Node commands such as `node ./node_modules/typescript/bin/tsc --noEmit` when needed.
 
 ---
 
-## Project Structure
+## Roadmap
 
-```text
-src/
-  app/                         React app shell, auth context, layout, and routes
-  features/
-    projects/                  Project, milestone, audit area, and workspace UI
-    templates/                 Template automation and document generation UI
-  main.tsx                     Frontend bootstrap
+### Completed
 
-server/
-  api/                         Express route modules
-  data/                        Checklist and review program libraries
-  integrations/                Google Drive integration
-  middleware/                  Authentication middleware
-  services/                    Milestone, performance, and workflow services
+- [x] Project management
+- [x] Audit area allocation
+- [x] Question checklist workflow
+- [x] Table checklist working papers
+- [x] Evidence repository
+- [x] Google Drive integration foundation
+- [x] Maker-reviewer workflow
+- [x] Observations and CAPA foundations
+- [x] Workflow milestone tracker
+- [x] Template automation foundation
+- [x] Audit logs
 
-prisma/
-  migrations/                  Database migrations
-  schema.prisma                Prisma schema
-  seed.ts                      Seed script
+### In Progress
 
-scripts/                       Maintenance and smoke-test utilities
-types/                         Local TypeScript declarations
-```
+- [ ] Enhanced milestone workspace UX
+- [ ] Real screenshot gallery
+- [ ] Reviewer queue polish
+- [ ] Advanced notification workflows
+- [ ] Production PostgreSQL deployment profile
 
-Runtime folders such as `uploads/`, `generated/`, `repository/`, `dist/`, local databases, logs, credentials, and cookies are intentionally ignored by Git.
+### Planned
+
+- [ ] AI Copilot
+- [ ] Client Portal
+- [ ] Azure AD / SSO
+- [ ] Slack integration
+- [ ] Microsoft Teams integration
+- [ ] Power BI dashboards
+- [ ] Risk Management
+- [ ] Continuous Compliance Monitoring
+- [ ] Vendor Portal
+- [ ] Multi-tenant Consultancy Mode
+- [ ] Jira integration
+- [ ] Advanced repository permissions
 
 ---
 
-## Why Auditie Is Better Than Excel
+## Advanced Details
 
-| Excel-Based Audit Management | Auditie |
+<details>
+<summary><strong>Supported audit lifecycle milestones</strong></summary>
+
+- Review Planning
+- Overall Project Management
+- Team Briefing Meeting
+- Review Kick Off Meeting
+- Area-wise Review Checklist
+- Data Requirement Roll Out
+- Process Walkthrough
+- Review Risk & Control Matrix
+- Data Analytics - Sampling
+- Review Execution
+- Weekly Status Update
+- Interim Review
+- Queries Discussion
+- Draft Report Preparation
+- Draft Report Review
+- Draft Report Submission
+- Draft Report Discussion
+- Final Report Preparation
+- Final Report Review
+- Final Report Submission
+- Review Closing Meeting
+- Review Committee Meeting
+
+</details>
+
+<details>
+<summary><strong>Current development note</strong></summary>
+
+Auditie is under active development. Some capabilities, especially AI, advanced notifications, SSO, client portal, and external dashboard integrations, are roadmap items. The current codebase includes the core project, milestone, checklist, evidence, repository, review, observation, CAPA, report, template, user, and audit log foundations.
+
+</details>
+
+<details>
+<summary><strong>Runtime folders ignored by Git</strong></summary>
+
+Runtime folders and sensitive files such as `uploads/`, `generated/`, `repository/`, `dist/`, local databases, logs, cookies, `.env`, and OAuth credentials are intentionally ignored.
+
+</details>
+
+---
+
+## Contributing
+
+Contributions are welcome.
+
+| Step | Action |
 | --- | --- |
-| Files scattered across folders | Centralized project workspace |
-| Manual version control | Structured records and activity logs |
-| Evidence pasted into sheets or emails | Evidence linked directly to rows, areas, observations, and milestones |
-| Review status tracked manually | Maker-reviewer workflow with queue visibility |
-| Progress calculated by managers | Progress derived from areas, milestones, and workspaces |
-| Observations maintained separately | Findings and CAPA connected to audit execution |
-| Repetitive templates | Reusable checklist and document templates |
-| Hard to trace changes | Complete audit activity history |
+| 1 | Fork the repository |
+| 2 | Create a feature branch |
+| 3 | Keep changes scoped and tested |
+| 4 | Run TypeScript and build checks |
+| 5 | Open a pull request with a clear summary |
 
-Auditie helps consultancies deliver faster, more consistent, and more traceable audits.
+Recommended checks:
 
----
-
-## Future Roadmap
-
-- AI Copilot for auditors
-- Multi-tenant consultancy mode
-- Client portal
-- API integrations
-- Microsoft Teams integration
-- Slack integration
-- Azure AD / SSO
-- Jira integration
-- Power BI dashboards
-- Risk management module
-- Asset management module
-- Vendor risk management
-- Continuous compliance monitoring
-- Advanced notification engine
-- Role-based repository permissions
-- Production PostgreSQL deployment profile
-
----
-
-## Collapsible Details
-
-<details>
-<summary><strong>Supported Audit Types</strong></summary>
-
-- ISO 27001
-- ISO 27701
-- SOC 2
-- ITGC
-- VAPT
-- PCI DSS
-- HIPAA
-- NIST
-- Internal Audits
-- Client-specific compliance engagements
-
-</details>
-
-<details>
-<summary><strong>Example Audit Area Workflow</strong></summary>
-
-1. Audit Manager creates project.
-2. Audit Manager assigns HR area to a maker.
-3. HR working paper is generated.
-4. Maker fills table rows and uploads evidence.
-5. Maker submits the area for review.
-6. Reviewer approves or requests rework.
-7. Observations and CAPA are tracked.
-8. Area progress contributes to project progress.
-
-</details>
-
-<details>
-<summary><strong>Example Milestone Workflow</strong></summary>
-
-1. Review Planning milestone is opened.
-2. Scope, objectives, criteria, team, and audit plan are completed.
-3. Data Requirement Roll Out tracks requests.
-4. Review Execution summarizes assigned areas.
-5. Draft Report and Final Report milestones track report versions and review comments.
-6. Closing milestones capture final meetings and closure actions.
-
-</details>
+```bash
+node ./node_modules/typescript/bin/tsc --noEmit
+npm run build
+```
 
 ---
 
 ## License
 
-This project is licensed under the **Shaikh Sayma**.
+Auditie is released under the **MIT License**.
 
 ---
 
-## Project Status
+<div align="center">
 
-Auditie is under active development. The platform already includes core project, audit area, checklist, repository, template, user, milestone, review, observation, CAPA, reporting, and audit log foundations. Roadmap items are documented above and should be treated as planned capabilities unless implemented in the current codebase.
+  <h3>Auditie</h3>
+
+  <p><strong>Made with love for IT Auditors & Compliance Consultants.</strong></p>
+
+  <p>
+    <a href="#auditie">Back to top</a>
+    ·
+    <a href="https://github.com/sayma-shaikh/-Auditie---Audit-Compliance-Management-Platform/issues">Report Issue</a>
+    ·
+    <a href="https://github.com/sayma-shaikh/-Auditie---Audit-Compliance-Management-Platform">Star Repository</a>
+  </p>
+
+</div>
