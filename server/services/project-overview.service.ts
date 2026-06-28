@@ -13,6 +13,10 @@ type OverviewFilters = {
   dueDateRange?: string;
 };
 
+type AssignmentUrgency = 'OVERDUE' | 'BLOCKED' | 'ACTION_REQUIRED' | 'REVIEW_OVERDUE' | 'MISSING_EVIDENCE' | 'MISSING_FIELDS' | 'NORMAL';
+
+const REVIEW_SLA_DAYS = 3;
+
 function startOfToday() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -63,10 +67,80 @@ function safeJsonArray(value?: string | null): any[] {
   }
 }
 
+function safeJsonObject(value?: string | null): Record<string, any> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 function questionEvidenceCount(item: any) {
   if (Array.isArray(item?.evidence)) return item.evidence.length;
   if (typeof item?.evidence === 'string' && item.evidence.trim()) return 1;
   return 0;
+}
+
+function daysSince(date: Date | string | null | undefined, today: Date) {
+  if (!date) return 0;
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.floor((today.getTime() - start.getTime()) / 86400000));
+}
+
+function areaRows(area: any) {
+  return [
+    ...(area.checklistRows || []),
+    ...(area.workingPapers || []).flatMap((paper: any) => paper.checklistRows || []),
+  ];
+}
+
+function hasMandatoryEvidenceGap(area: any) {
+  if (!/mandatory|required/i.test(String(area.checklistTemplate?.evidenceRequirement || ''))) return false;
+  return areaRows(area).some((row: any) => !row.evidenceLink && !(row.evidence || []).length);
+}
+
+function hasMandatoryFieldGap(area: any) {
+  const areasForFields = area.workpaperKind === 'AREA_GROUP' ? area.workingPapers || [] : [area];
+  return areasForFields.some((itemArea: any) => {
+    const requiredColumns = (itemArea.checklistTemplate?.columns || area.checklistTemplate?.columns || []).filter((column: any) => column.isRequired);
+    if (!requiredColumns.length) return false;
+    return (itemArea.checklistRows || []).some((row: any) => {
+      const rowData = safeJsonObject(row.rowData);
+      return requiredColumns.some((column: any) => rowData[column.columnKey] === undefined || rowData[column.columnKey] === null || String(rowData[column.columnKey]).trim() === '');
+    });
+  });
+}
+
+function calculateAreaUrgency(area: any, today: Date, fallbackReviewerId?: string | null): AssignmentUrgency {
+  const status = areaStatus(area);
+  const reviewWaitingDays = daysSince(area.submittedAt || area.updatedAt, today);
+  if (area.dueDate && new Date(area.dueDate) < today && status !== 'Completed') return 'OVERDUE';
+  if (area.reviewStatus === 'AWAITING_REVIEW' && !(area.reviewerUserId || fallbackReviewerId)) return 'BLOCKED';
+  if (area.reviewStatus === 'REWORK_REQUIRED' || status === 'Rework Required') return 'ACTION_REQUIRED';
+  if (area.reviewStatus === 'AWAITING_REVIEW' && reviewWaitingDays > REVIEW_SLA_DAYS) return 'REVIEW_OVERDUE';
+  if (hasMandatoryEvidenceGap(area)) return 'MISSING_EVIDENCE';
+  if (hasMandatoryFieldGap(area)) return 'MISSING_FIELDS';
+  return 'NORMAL';
+}
+
+function urgencySeverity(urgency: AssignmentUrgency) {
+  if (['OVERDUE', 'BLOCKED', 'REVIEW_OVERDUE'].includes(urgency)) return 'critical';
+  if (['ACTION_REQUIRED', 'MISSING_EVIDENCE', 'MISSING_FIELDS'].includes(urgency)) return 'warning';
+  return 'info';
+}
+
+function urgencyMessage(area: any, urgency: AssignmentUrgency) {
+  const name = area.areaName || area.name || 'Assignment';
+  if (urgency === 'OVERDUE') return `${name} is overdue`;
+  if (urgency === 'BLOCKED') return `${name} is blocked because no reviewer is assigned`;
+  if (urgency === 'ACTION_REQUIRED') return `${name} was returned for rework`;
+  if (urgency === 'REVIEW_OVERDUE') return `${name} review SLA exceeded`;
+  if (urgency === 'MISSING_EVIDENCE') return `${name} is missing mandatory evidence`;
+  if (urgency === 'MISSING_FIELDS') return `${name} is missing mandatory fields`;
+  return `${name} is on track`;
 }
 
 function dueDateMatches(date: Date | null | undefined, range?: string) {
@@ -112,11 +186,13 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
       areaAllocations: {
         where: { parentAreaId: null },
         include: {
+          checklistTemplate: { include: { columns: true } },
           checklistRows: { include: { evidence: true } },
           observations: { include: { capa: true } },
           capas: true,
           workingPapers: {
             include: {
+              checklistTemplate: { include: { columns: true } },
               checklistRows: { include: { evidence: true } },
               observations: { include: { capa: true } },
               capas: true,
@@ -221,12 +297,13 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
   const observationWithoutCapa = allAreaObservations.filter((observation) => !observation.capa).length;
   const observationPendingReview = allAreaObservations.filter((observation) => !observation.reviewed && !isClosedStatus(observation.status)).length;
 
+  const reviewPending = filteredAreas.filter((area) => area.reviewStatus === 'AWAITING_REVIEW' || areaStatus(area) === 'Awaiting Review').length;
+  const reviewReturned = filteredAreas.filter((area) => area.reviewStatus === 'REWORK_REQUIRED' || areaStatus(area) === 'Rework Required').length;
+  const reviewApproved = filteredAreas.filter((area) => area.reviewStatus === 'APPROVED' || areaStatus(area) === 'Completed').length;
   const overdueAreas = filteredAreas.filter((area) => area.dueDate && new Date(area.dueDate) < today && areaStatus(area) !== 'Completed').length;
   const overdueItems = overdueAreas + capaOverdue + queriesOverdue + milestoneOverdue;
   const highRiskOpen = bySeverity.high;
-  const reviewPending = filteredAreas.filter((area) => area.reviewStatus === 'AWAITING_REVIEW').length;
-  const reviewReturned = filteredAreas.filter((area) => area.reviewStatus === 'REWORK_REQUIRED').length;
-  const reviewApproved = filteredAreas.filter((area) => area.reviewStatus === 'APPROVED').length;
+  const criticalObservationOpen = allAreaObservations.filter((observation) => isOpenStatus(observation.status) && normalize(observation.capa?.riskRating || observation.status).includes('critical')).length;
   const rowEvidenceRecords = allAreaRows.flatMap((row) => row.evidence || []);
   const legacyEvidenceRecords = filteredAreas.flatMap((area) => {
     const areasForEvidence = area.workpaperKind === 'AREA_GROUP' ? area.workingPapers || [] : [area];
@@ -240,23 +317,38 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
     returned: rowEvidenceRecords.filter((item) => item.reviewStatus === 'RETURNED').length
       + legacyEvidenceRecords.filter((item) => item.reviewStatus === 'RETURNED').length,
   };
-  const healthScore = Math.round(
-    (milestoneProgress * 0.35)
-    + (Math.max(0, 100 - (overdueItems * 15)) * 0.20)
-    + (percent(reviewApproved, reviewPending + reviewReturned + reviewApproved) * 0.15)
-    + (Math.max(0, 100 - (highRiskOpen * 25)) * 0.15)
-    + (Math.max(0, 100 - ((evidenceReview.pending + evidenceReview.returned) * 10)) * 0.15),
-  );
+  const totalReviews = reviewPending + reviewReturned + reviewApproved;
+  const areaCompletionUnits = filteredAreas.reduce((sum, area) => {
+    const rows = [
+      ...(area.checklistRows || []),
+      ...(area.workingPapers || []).flatMap((paper) => paper.checklistRows || []),
+    ];
+    const snapshots = (area.workingPapers?.length ? area.workingPapers : [area]).flatMap((paper: any) => safeJsonArray(paper.checklistSnapshot));
+    return sum + (areaProgressFromRows(rows, snapshots).percent / 100);
+  }, 0);
+  const areaCompletion = percent(areaCompletionUnits, filteredAreas.length);
+  const reviewCompletion = percent(reviewApproved, totalReviews);
+  const overallProjectProgress = percent(milestoneCompleted + areaCompletionUnits + reviewApproved, filteredMilestones.length + filteredAreas.length + totalReviews);
   const healthReasons: string[] = [];
-  if (evidenceReview.pending) healthReasons.push(`${evidenceReview.pending} evidence item(s) pending reviewer validation`);
-  if (evidenceReview.returned) healthReasons.push(`${evidenceReview.returned} evidence item(s) returned`);
-  if (highRiskOpen) healthReasons.push(`${highRiskOpen} high-risk observations open`);
-  if (milestoneOverdue) healthReasons.push(`${milestoneOverdue} milestone(s) delayed`);
-  if (capaOverdue) healthReasons.push(`${capaOverdue} CAPA item(s) overdue`);
-  if (!healthReasons.length) healthReasons.push('No critical blockers detected');
-  const healthStatus = healthScore < 50 || highRiskOpen >= 3 || milestoneOverdue > 1
+  const reportingDeadlineNear = Boolean(project.reportingDeadline && new Date(project.reportingDeadline) >= today && new Date(project.reportingDeadline).getTime() - today.getTime() <= 7 * 86400000);
+  const delayedMilestones = filteredMilestones.filter((item) => normalize(item.status).includes('delay')).length;
+  const overdueReviews = filteredAreas.filter((area) => calculateAreaUrgency(area, today, project.auditManagerId) === 'REVIEW_OVERDUE').length;
+  const blockedAreas = filteredAreas.filter((area) => calculateAreaUrgency(area, today, project.auditManagerId) === 'BLOCKED').length;
+  const daysUntilReportingDeadline = project.reportingDeadline ? Math.ceil((new Date(project.reportingDeadline).getTime() - today.getTime()) / 86400000) : null;
+  if (milestoneOverdue) healthReasons.push(`${milestoneOverdue} overdue milestone(s)`);
+  if (overdueReviews) healthReasons.push(`${overdueReviews} overdue review(s)`);
+  if (reportingDeadlineNear && overallProjectProgress < 100) healthReasons.push(`Reporting deadline in ${Math.max(daysUntilReportingDeadline || 0, 0)} day(s) with only ${overallProjectProgress}% completion`);
+  if (criticalObservationOpen) healthReasons.push(`${criticalObservationOpen} open critical observation(s)`);
+  if (capaOverdue) healthReasons.push(`${capaOverdue} overdue CAPA item(s)`);
+  if (blockedAreas) healthReasons.push(`${blockedAreas} blocked audit area(s)`);
+  if (reviewPending) healthReasons.push(`${reviewPending} Audit Area${reviewPending === 1 ? ' is' : 's are'} awaiting reviewer approval`);
+  if (reviewReturned) healthReasons.push(`${reviewReturned} returned review(s)`);
+  if (highRiskOpen && !criticalObservationOpen) healthReasons.push(`${highRiskOpen} high observation(s)`);
+  if (delayedMilestones) healthReasons.push(`${delayedMilestones} delayed milestone(s)`);
+  if (!healthReasons.length) healthReasons.push('No pending blockers');
+  const healthStatus = milestoneOverdue || overdueReviews || (reportingDeadlineNear && overallProjectProgress < 100) || criticalObservationOpen || capaOverdue
     ? 'CRITICAL'
-    : healthScore < 80 || overdueItems > 0 || highRiskOpen > 0
+    : reviewPending || reviewReturned || blockedAreas || highRiskOpen || delayedMilestones || capaOpen
       ? 'NEEDS_ATTENTION'
       : 'HEALTHY';
 
@@ -278,6 +370,7 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
       name: area.areaName,
       makerId: area.makerUserId || area.assignedUserId,
       maker: project.userProjects.find((item) => item.userId === (area.makerUserId || area.assignedUserId))?.user?.name || null,
+      submittedBy: project.userProjects.find((item) => item.userId === (area.makerUserId || area.assignedUserId))?.user?.name || null,
       reviewerId: area.reviewerUserId || project.auditManagerId,
       reviewer: project.userProjects.find((item) => item.userId === (area.reviewerUserId || project.auditManagerId))?.user?.name || auditManager?.name || null,
       progress: progress.percent,
@@ -295,13 +388,26 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
   const team = project.userProjects.map((membership) => {
     const userAreas = filteredAreas.filter((area) => (area.makerUserId || area.assignedUserId) === membership.userId);
     const reviewAreas = filteredAreas.filter((area) => (area.reviewerUserId || project.auditManagerId) === membership.userId && area.reviewStatus === 'AWAITING_REVIEW');
+    const returnedReviewAreas = filteredAreas.filter((area) => (area.reviewerUserId || project.auditManagerId) === membership.userId && area.reviewStatus === 'REWORK_REQUIRED');
+    const pendingMilestones = filteredMilestones.filter((milestone) => milestone.ownerId === membership.userId && milestone.status !== 'COMPLETED').length;
     const userRows = userAreas.flatMap((area) => [
       ...(area.checklistRows || []),
       ...(area.workingPapers || []).flatMap((paper) => paper.checklistRows || []),
     ]);
     const completedRows = userRows.filter((row) => rowStatusBucket(row.status) === 'completed').length;
     const pendingRows = Math.max(userRows.length - completedRows, 0);
-    const userOverdue = userAreas.filter((area) => area.dueDate && new Date(area.dueDate) < today && areaStatus(area) !== 'Completed').length;
+    const userOverdueAreas = userAreas.filter((area) => area.dueDate && new Date(area.dueDate) < today && areaStatus(area) !== 'Completed').length;
+    const userOverdueReviews = reviewAreas.filter((area) => calculateAreaUrgency(area, today, project.auditManagerId) === 'REVIEW_OVERDUE').length;
+    const userOverdueMilestones = filteredMilestones.filter((milestone) => milestone.ownerId === membership.userId && milestone.targetDate && new Date(milestone.targetDate) < today && milestone.status !== 'COMPLETED').length;
+    const userOverdue = userOverdueAreas + userOverdueReviews + userOverdueMilestones;
+    const activeItems = userAreas.length + reviewAreas.length + returnedReviewAreas.length + pendingMilestones + userOverdue;
+    const currentAssignment = reviewAreas[0]?.areaName
+      ? `${reviewAreas[0].areaName} Checklist Review`
+      : returnedReviewAreas[0]?.areaName
+        ? `Resolve ${returnedReviewAreas[0].areaName}`
+        : userAreas[0]?.areaName
+          ? userAreas[0].areaName
+          : filteredMilestones.find((milestone) => milestone.ownerId === membership.userId && milestone.status !== 'COMPLETED')?.milestoneName || '-';
     return {
       userId: membership.userId,
       name: membership.user?.name || 'User',
@@ -311,9 +417,15 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
       completedRows,
       pendingRows,
       pendingReviews: reviewAreas.length,
+      pendingMilestones,
+      returnedReviews: returnedReviewAreas.length,
       observationsCreated: allAreaObservations.filter((observation) => observation.createdBy === membership.userId).length,
       overdueItems: userOverdue,
-      workloadPercent: percent(userAreas.length + reviewAreas.length, Math.max(filteredAreas.length, 1)),
+      currentAssignment,
+      completedWork: completedRows,
+      pendingWork: pendingRows + reviewAreas.length + pendingMilestones,
+      reviews: reviewAreas.length + returnedReviewAreas.length,
+      workloadStatus: activeItems >= 9 ? 'Overloaded' : activeItems >= 4 ? 'Busy' : 'Available',
     };
   });
 
@@ -338,6 +450,75 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
   const nextCapa = uniqueCapas.filter((capa: any) => capa.targetDate && !isClosedStatus(capa.closureStatus)).sort((a: any, b: any) => Number(new Date(a.targetDate)) - Number(new Date(b.targetDate)))[0] || null;
   const nextBilling = project.billingRecords.filter((billing) => billing.paymentDueDate && !isClosedStatus(billing.collectionStatus)).sort((a, b) => Number(new Date(a.paymentDueDate!)) - Number(new Date(b.paymentDueDate!)))[0] || null;
   const currentMilestone = filteredMilestones.find((item) => item.status === 'IN_PROGRESS') || nextMilestone || null;
+  const currentMilestoneIndex = currentMilestone ? filteredMilestones.findIndex((item) => item.id === currentMilestone.id) : -1;
+  const nextWorkflowMilestone = currentMilestoneIndex >= 0
+    ? filteredMilestones.slice(currentMilestoneIndex + 1).find((item) => item.status !== 'COMPLETED') || null
+    : nextMilestone;
+  const returnedReviewAction = areas.find((area) => area.status === 'Rework Required') || null;
+  const overdueReviewAction = areas.find((area) => {
+    const source = filteredAreas.find((item) => item.id === area.areaId);
+    return source ? calculateAreaUrgency(source, today, project.auditManagerId) === 'REVIEW_OVERDUE' : false;
+  }) || null;
+  const pendingReviewAction = areas.find((area) => area.status === 'Awaiting Review') || null;
+  const pendingAreaAction = areas.find((area) => !['Completed', 'Awaiting Review', 'Rework Required'].includes(area.status)) || null;
+  const reportingDeadlineAction = project.reportingDeadline && new Date(project.reportingDeadline) >= today && overallProjectProgress < 100 ? project.reportingDeadline : null;
+  const overdueMilestoneAction = filteredMilestones
+    .filter((item) => item.targetDate && new Date(item.targetDate) < today && item.status !== 'COMPLETED')
+    .sort((a, b) => Number(new Date(a.targetDate!)) - Number(new Date(b.targetDate!)))[0] || null;
+  const selectedNextAction = pendingReviewAction || returnedReviewAction || null;
+  const nextAction = overdueMilestoneAction
+      ? {
+          kind: overdueMilestoneAction.milestoneName,
+          status: 'Overdue Milestone',
+          milestone: overdueMilestoneAction.milestoneName,
+          owner: overdueMilestoneAction.owner?.name || null,
+          dueDate: overdueMilestoneAction.targetDate,
+          href: `/projects/${project.id}/milestones/${overdueMilestoneAction.id}`,
+          buttonLabel: 'Open Timeline',
+        }
+      : selectedNextAction
+        ? {
+            kind: selectedNextAction === returnedReviewAction ? `Resolve ${selectedNextAction.name} Review` : `Review ${selectedNextAction.name} Checklist`,
+            status: selectedNextAction === returnedReviewAction ? 'Returned Review' : selectedNextAction === overdueReviewAction ? 'Overdue Review' : 'Waiting for Review',
+            area: selectedNextAction.name,
+            reviewer: selectedNextAction.reviewer,
+            waitingFor: selectedNextAction.reviewer,
+            submittedBy: selectedNextAction.submittedBy || selectedNextAction.maker,
+            dueDate: selectedNextAction.dueDate,
+            href: `/projects/${project.id}/areas/${selectedNextAction.areaId}`,
+            buttonLabel: 'Open Review',
+          }
+      : reportingDeadlineAction
+        ? {
+            kind: 'Prepare Final Report',
+            status: 'Upcoming Reporting Deadline',
+            dueDate: reportingDeadlineAction,
+            href: `/projects/${project.id}`,
+            buttonLabel: 'Open Project',
+          }
+        : currentMilestone
+      ? {
+          kind: 'Current Milestone',
+          status: currentMilestone.status,
+          milestone: currentMilestone.milestoneName,
+          owner: currentMilestone.owner?.name || null,
+          dueDate: currentMilestone.targetDate,
+          href: `/projects/${project.id}/milestones/${currentMilestone.id}`,
+          buttonLabel: 'Open Timeline',
+        }
+      : pendingAreaAction
+        ? {
+            kind: 'Pending Area',
+            status: pendingAreaAction.status,
+            area: pendingAreaAction.name,
+            reviewer: pendingAreaAction.reviewer,
+            waitingFor: pendingAreaAction.maker,
+            submittedBy: pendingAreaAction.maker,
+            dueDate: pendingAreaAction.dueDate,
+            href: `/projects/${project.id}/areas/${pendingAreaAction.areaId}`,
+            buttonLabel: 'Open Area',
+          }
+        : null;
   const healthTone = (state: 'green' | 'amber' | 'red') => state;
   const latestDelay = [
     ...filteredMilestones.filter((item) => item.targetDate && new Date(item.targetDate) < today && item.status !== 'COMPLETED').map((item) => item.targetDate),
@@ -361,11 +542,6 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
       value: reviewReturned ? `${reviewReturned} returned` : reviewPending ? `${reviewPending} pending` : 'On Track',
     },
     {
-      label: 'Evidence',
-      state: healthTone(evidenceReview.returned ? 'red' : evidenceReview.pending ? 'amber' : 'green'),
-      value: evidenceReview.returned ? `${evidenceReview.returned} returned` : evidenceReview.pending ? `${evidenceReview.pending} pending review` : 'Reviewed',
-    },
-    {
       label: 'Risk',
       state: healthTone(highRiskOpen > 2 || bySeverity.high > 0 ? (bySeverity.high > 2 ? 'red' : 'amber') : 'green'),
       value: bySeverity.high ? `${bySeverity.high} high` : 'Low',
@@ -378,47 +554,78 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
     dueDate: item.targetDate,
     isCurrent: currentMilestone?.id === item.id,
     isCompleted: item.status === 'COMPLETED',
+    isReturned: normalize(item.status).includes('return') || normalize(item.status).includes('rework'),
     isOverdue: Boolean(item.targetDate && new Date(item.targetDate) < today && item.status !== 'COMPLETED'),
   }));
+  const assignmentAttention = filteredAreas
+    .map((area) => {
+      const urgency = calculateAreaUrgency(area, today, project.auditManagerId);
+      return {
+        urgency,
+        severity: urgencySeverity(urgency),
+        type: urgency === 'ACTION_REQUIRED' ? 'Returned Work' : urgency === 'REVIEW_OVERDUE' ? 'Review SLA' : urgency === 'BLOCKED' ? 'Reviewer' : urgency === 'MISSING_EVIDENCE' ? 'Evidence' : urgency === 'MISSING_FIELDS' ? 'Assignment' : 'Task',
+        message: urgencyMessage(area, urgency),
+        href: `/projects/${project.id}/areas/${area.id}`,
+        dueDate: area.dueDate,
+      };
+    })
+    .filter((item) => item.urgency !== 'NORMAL');
   const attentionRequired = [
     ...filteredMilestones
       .filter((item) => item.targetDate && new Date(item.targetDate) < today && item.status !== 'COMPLETED')
-      .map((item) => ({ severity: 'critical', type: 'Milestone', message: `${item.milestoneName} milestone is overdue`, href: `/projects/${project.id}/milestones/${item.id}`, dueDate: item.targetDate })),
-    ...areas
-      .filter((area) => area.status === 'Awaiting Review')
-      .map((area) => ({ severity: 'warning', type: 'Review', message: `${area.name} is waiting for reviewer`, href: `/projects/${project.id}/areas/${area.areaId}`, dueDate: area.dueDate })),
-    ...areas
-      .filter((area) => area.status === 'Rework Required')
-      .map((area) => ({ severity: 'critical', type: 'Returned Work', message: `${area.name} was returned for rework`, href: `/projects/${project.id}/areas/${area.areaId}`, dueDate: area.dueDate })),
-    ...(evidenceReview.pending ? [{ severity: 'warning', type: 'Evidence Review', message: `${evidenceReview.pending} evidence item(s) need reviewer validation`, href: `/projects/${project.id}?tab=Repository&reviewStatus=PENDING_REVIEW`, dueDate: null }] : []),
-    ...(evidenceReview.returned ? [{ severity: 'critical', type: 'Evidence Review', message: `${evidenceReview.returned} evidence item(s) were returned`, href: `/projects/${project.id}?tab=Repository&reviewStatus=RETURNED`, dueDate: null }] : []),
-    ...(highRiskOpen ? [{ severity: 'critical', type: 'Observation', message: `${highRiskOpen} high-risk observation(s) are open`, href: `/projects/${project.id}`, dueDate: null }] : []),
+      .map((item) => ({ urgency: 'OVERDUE', severity: 'critical', type: 'Milestone', message: `${item.milestoneName} milestone is overdue`, href: `/projects/${project.id}/milestones/${item.id}`, dueDate: item.targetDate })),
+    ...filteredMilestones
+      .filter((item) => normalize(item.status) === 'blocked' && !(item.targetDate && new Date(item.targetDate) < today))
+      .map((item) => ({ urgency: 'BLOCKED', severity: 'critical', type: 'Milestone', message: `${item.milestoneName} milestone is blocked`, href: `/projects/${project.id}/milestones/${item.id}`, dueDate: item.targetDate })),
+    ...assignmentAttention,
     ...uniqueCapas
       .filter((capa: any) => capa.targetDate && new Date(capa.targetDate) < today && !isClosedStatus(capa.closureStatus))
-      .map((capa: any) => ({ severity: 'critical', type: 'CAPA', message: 'CAPA item is overdue', href: `/projects/${project.id}`, dueDate: capa.targetDate })),
+      .map((capa: any) => ({ urgency: 'OVERDUE', severity: 'critical', type: 'CAPA', message: 'CAPA item is overdue', href: `/projects/${project.id}`, dueDate: capa.targetDate })),
   ].sort((a, b) => {
     const severityRank: Record<string, number> = { critical: 0, warning: 1, info: 2 };
     return (severityRank[a.severity] ?? 3) - (severityRank[b.severity] ?? 3)
       || Number(new Date(a.dueDate || 8640000000000000)) - Number(new Date(b.dueDate || 8640000000000000));
   }).slice(0, 8);
   const upcomingDeadlines = [
-    ...filteredMilestones.filter((item) => item.targetDate && item.status !== 'COMPLETED').map((item) => ({ dueDate: item.targetDate, item: item.milestoneName, owner: item.owner?.name || '-', status: item.status, href: `/projects/${project.id}/milestones/${item.id}` })),
-    ...areas.filter((area) => area.dueDate && area.status !== 'Completed').map((area) => ({ dueDate: area.dueDate, item: area.name, owner: area.maker || '-', status: area.status, href: `/projects/${project.id}/areas/${area.areaId}` })),
-    ...uniqueCapas.filter((capa: any) => capa.targetDate && !isClosedStatus(capa.closureStatus)).map((capa: any) => ({ dueDate: capa.targetDate, item: 'CAPA action', owner: '-', status: capa.closureStatus, href: `/projects/${project.id}` })),
-    ...(project.reportingDeadline ? [{ dueDate: project.reportingDeadline, item: 'Final report', owner: auditManager?.name || '-', status: project.status, href: `/projects/${project.id}` }] : []),
+    ...(project.reportingDeadline ? [{ priority: 0, dueDate: project.reportingDeadline, item: 'Reporting Deadline', owner: auditManager?.name || '-', status: project.status, href: `/projects/${project.id}` }] : []),
+    ...areas.filter((area) => area.dueDate && area.status !== 'Completed').map((area) => ({ priority: 1, dueDate: area.dueDate, item: `${area.name} area`, owner: area.reviewer || area.maker || '-', status: area.status, href: `/projects/${project.id}/areas/${area.areaId}` })),
+    ...filteredMilestones.filter((item) => item.targetDate && item.status !== 'COMPLETED').map((item) => ({ priority: 2, dueDate: item.targetDate, item: item.milestoneName, owner: item.owner?.name || '-', status: item.status, href: `/projects/${project.id}/milestones/${item.id}` })),
+    ...uniqueCapas.filter((capa: any) => capa.targetDate && !isClosedStatus(capa.closureStatus)).map((capa: any) => ({ priority: 3, dueDate: capa.targetDate, item: 'CAPA action', owner: '-', status: capa.closureStatus, href: `/projects/${project.id}` })),
   ]
     .filter((item) => item.dueDate)
     .sort((a, b) => Number(new Date(a.dueDate!)) - Number(new Date(b.dueDate!)))
     .slice(0, 5);
-  const maxActiveWork = Math.max(1, ...team.map((member) => member.assignedAreas + member.pendingReviews + member.overdueItems));
-  const cockpitTeam = team.map((member) => {
-    const activeWork = member.assignedAreas + member.pendingReviews + member.overdueItems;
-    return {
-      ...member,
-      pendingTasks: member.assignedAreas + member.pendingReviews,
-      workloadPercent: percent(activeWork, maxActiveWork),
-    };
-  });
+  const nextMajorDeadline = upcomingDeadlines[0] || null;
+  const deadlineDays = nextMajorDeadline?.dueDate ? Math.ceil((new Date(nextMajorDeadline.dueDate).getTime() - today.getTime()) / 86400000) : null;
+  const deadlineText = nextMajorDeadline
+    ? `${nextMajorDeadline.item} ${deadlineDays !== null && deadlineDays < 0 ? `overdue by ${Math.abs(deadlineDays)} day(s)` : `due in ${deadlineDays} day(s)`}`
+    : 'No upcoming deadlines';
+  const executiveSummary = [
+    `Project is currently in ${currentMilestone?.milestoneName || project.currentStage || 'the active audit phase'}.`,
+    reviewPending
+      ? `${reviewPending} audit area${reviewPending === 1 ? ' is' : 's are'} awaiting reviewer approval.`
+      : 'No audit areas are awaiting reviewer approval.',
+    milestoneOverdue ? `${milestoneOverdue} overdue milestone(s).` : 'No overdue milestones.',
+    `Overall completion is ${overallProjectProgress}%.`,
+    `Next major deadline: ${deadlineText}.`,
+  ];
+  const milestonePhaseProgress = (patterns: string[]) => {
+    const matches = filteredMilestones.filter((item) => patterns.some((pattern) => normalize(item.milestoneName).includes(pattern)));
+    if (!matches.length) return 0;
+    return percent(matches.filter((item) => item.status === 'COMPLETED').length, matches.length);
+  };
+  const completionBreakdown = [
+    { label: 'Planning', value: milestonePhaseProgress(['planning', 'scope']) },
+    { label: 'Execution', value: milestonePhaseProgress(['execution', 'checklist', 'walkthrough', 'fieldwork']) },
+    { label: 'Review', value: reviewCompletion },
+    { label: 'Observations', value: observationProgress },
+    { label: 'Reporting', value: milestonePhaseProgress(['report']) },
+    { label: 'Closure', value: milestonePhaseProgress(['closure', 'submission']) },
+  ];
+  const cockpitTeam = team.map((member) => ({
+    ...member,
+    pendingTasks: member.assignedAreas + member.pendingReviews + member.pendingMilestones,
+  }));
 
   return {
     project: {
@@ -432,9 +639,15 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
       reviewer: auditManager?.name || null,
       startDate: project.assignmentExecutionStartDate,
       endDate: project.assignmentExecutionEndDate || project.reportingDeadline,
+      reportingDeadline: project.reportingDeadline,
       currentPhase: project.currentStage,
       currentMilestone: currentMilestone?.milestoneName || project.currentStage || null,
-      overallProgress: milestoneProgress,
+      overallProgress: overallProjectProgress,
+      progressBreakdown: {
+        milestones: milestoneProgress,
+        auditAreas: areaCompletion,
+        reviews: reviewCompletion,
+      },
       projectManager: auditManager?.name || null,
     },
     filters: {
@@ -444,7 +657,8 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
       milestones: project.milestones.map((item) => ({ id: item.id, name: item.milestoneName })),
       statuses: Array.from(new Set([...areas.map((area) => area.status), ...project.milestones.map((item) => item.status), ...project.queries.map((item) => item.status)])),
     },
-    health: { status: healthStatus, score: healthScore, reasons: healthReasons },
+    health: { status: healthStatus, score: overallProjectProgress, reasons: healthReasons },
+    executiveSummary,
     healthStrip,
     snapshot: {
       auditAreas: {
@@ -478,7 +692,7 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
       },
     },
     kpis: {
-      overallProgress: milestoneProgress,
+      overallProgress: overallProjectProgress,
       totalAuditAreas: filteredAreas.length,
       completedAreas: areas.filter((area) => area.status === 'Completed').length,
       areasUnderReview: areas.filter((area) => area.status === 'Awaiting Review').length,
@@ -544,6 +758,12 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
       pending: milestonePending,
       overdue: milestoneOverdue,
       current: currentMilestone?.milestoneName || project.currentStage || null,
+      next: nextWorkflowMilestone?.milestoneName || null,
+      currentDetails: currentMilestone ? {
+        owner: currentMilestone.owner?.name || null,
+        started: currentMilestone.startedAt,
+        dueDate: currentMilestone.targetDate,
+      } : null,
       timeline: milestoneTimeline,
       rows: filteredMilestones.map((item) => ({
         id: item.id,
@@ -562,6 +782,8 @@ export async function getProjectOverviewDashboard(prisma: PrismaLike, projectId:
     team: cockpitTeam,
     recentActivity: meaningfulActivity,
     attentionRequired,
+    nextAction,
+    completionBreakdown,
     upcomingDeadlines,
     deadlines: {
       nextMilestone: nextMilestone ? { id: nextMilestone.id, name: nextMilestone.milestoneName, dueDate: nextMilestone.targetDate } : null,

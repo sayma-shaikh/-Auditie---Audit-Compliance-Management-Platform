@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { createColumnHelper, flexRender, getCoreRowModel, getFilteredRowModel, getPaginationRowModel, getSortedRowModel, useReactTable, type ColumnOrderState, type ColumnSizingState, type SortingState } from '@tanstack/react-table';
+import { createColumnHelper, flexRender, getCoreRowModel, getFilteredRowModel, getSortedRowModel, useReactTable, type ColumnOrderState, type ColumnSizingState, type SortingState } from '@tanstack/react-table';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -110,6 +110,18 @@ type TableChecklistRow = {
   observation?: string | null;
   evidenceLink?: string | null;
   evidence?: Array<{ id: string; fileName: string; filePath: string; fileType?: string | null; uploadedAt?: string }>;
+};
+
+type GridCellCoord = { rowIndex: number; columnIndex: number };
+type GridColumnDef = {
+  id: string;
+  label: string;
+  kind: 'rowData' | 'field';
+  field?: 'status' | 'comments' | 'observation' | 'evidenceLink';
+  columnKey?: string;
+  type?: ChecklistColumnDef['columnType'] | 'status';
+  options?: string[] | null;
+  width: number;
 };
 
 type AreaEvidenceRecord = EvidenceRecord & {
@@ -372,9 +384,10 @@ type ApiProject = {
 };
 
 type OverviewDashboard = {
-  project: { id: string; name: string; clientName: string; framework?: string | null; industry?: string | null; status: string; auditManager?: string | null; reviewer?: string | null; startDate?: string | null; endDate?: string | null; currentPhase?: string | null; currentMilestone?: string | null; overallProgress?: number; projectManager?: string | null };
+  project: { id: string; name: string; clientName: string; framework?: string | null; industry?: string | null; status: string; auditManager?: string | null; reviewer?: string | null; startDate?: string | null; endDate?: string | null; reportingDeadline?: string | null; currentPhase?: string | null; currentMilestone?: string | null; overallProgress?: number; progressBreakdown?: { milestones: number; auditAreas: number; reviews: number }; projectManager?: string | null };
   filters: { areas: Array<{ id: string; name: string }>; owners: Array<{ id: string; name: string }>; reviewers: Array<{ id: string; name: string }>; milestones: Array<{ id: string; name: string }>; statuses: string[] };
   health: { status: 'HEALTHY' | 'NEEDS_ATTENTION' | 'CRITICAL'; score: number; reasons: string[] };
+  executiveSummary?: string[];
   healthStrip: Array<{ label: string; state: 'green' | 'amber' | 'red'; value: string }>;
   snapshot: {
     auditAreas: { total: number; completed: number; inReview: number; pending: number };
@@ -386,15 +399,17 @@ type OverviewDashboard = {
   };
   kpis: Record<string, number>;
   checklists: { totalRows: number; completedRows: number; pendingRows: number; nonCompliantRows: number; notApplicableRows: number; observationsCreated: number; completionPercent: number; statusDistribution: Array<{ label: string; value: number }> };
-  areas: Array<{ areaId: string; name: string; maker?: string | null; reviewer?: string | null; progress: number; status: string; dueDate?: string | null; checklistRows: number; completedRows: number; pendingRows: number; observations: number; openObservations: number; evidenceCount: number }>;
+  areas: Array<{ areaId: string; name: string; maker?: string | null; submittedBy?: string | null; reviewer?: string | null; progress: number; status: string; dueDate?: string | null; checklistRows: number; completedRows: number; pendingRows: number; observations: number; openObservations: number; evidenceCount: number }>;
   observations: { total: number; open: number; closed: number; rejected: number; returned: number; pendingReview: number; withoutCapa: number; bySeverity: { high: number; medium: number; low: number }; byArea: Array<{ area: string; count: number }> };
   capa: { total: number; open: number; closed: number; overdue: number; pendingVerification: number; closurePercent: number };
   evidenceReview: { pending: number; approved: number; returned: number };
   queries: { total: number; open: number; closed: number; overdue: number; pendingClientResponse: number; pendingAuditorResponse: number };
-  milestones: { total: number; completed: number; inProgress: number; pending: number; overdue: number; current?: string | null; timeline?: Array<{ id: string; name: string; status: string; dueDate?: string | null; isCurrent: boolean; isCompleted: boolean; isOverdue: boolean }>; rows: Array<{ id: string; milestone: string; owner?: string | null; status: string; dueDate?: string | null; started?: string | null; completed?: string | null; progress: number; pendingActions: string; reviewStatus: string; repository: number }> };
-  team: Array<{ userId: string; name: string; role: string; assignedAreas: number; checklistRows: number; completedRows: number; pendingRows: number; pendingReviews: number; pendingTasks?: number; observationsCreated: number; overdueItems: number; workloadPercent: number }>;
+  milestones: { total: number; completed: number; inProgress: number; pending: number; overdue: number; current?: string | null; next?: string | null; currentDetails?: { owner?: string | null; started?: string | null; dueDate?: string | null } | null; timeline?: Array<{ id: string; name: string; status: string; dueDate?: string | null; isCurrent: boolean; isCompleted: boolean; isReturned?: boolean; isOverdue: boolean }>; rows: Array<{ id: string; milestone: string; owner?: string | null; status: string; dueDate?: string | null; started?: string | null; completed?: string | null; progress: number; pendingActions: string; reviewStatus: string; repository: number }> };
+  team: Array<{ userId: string; name: string; role: string; assignedAreas: number; checklistRows: number; completedRows: number; pendingRows: number; pendingReviews: number; pendingMilestones?: number; returnedReviews?: number; pendingTasks?: number; observationsCreated: number; overdueItems: number; currentAssignment?: string; completedWork?: number; pendingWork?: number; reviews?: number; workloadStatus?: string }>;
   recentActivity: Array<{ id: string; type: string; message: string; user: string; createdAt: string }>;
-  attentionRequired: Array<{ severity: 'critical' | 'warning' | 'info'; type: string; message: string; href: string; dueDate?: string | null }>;
+  attentionRequired: Array<{ urgency: 'OVERDUE' | 'BLOCKED' | 'ACTION_REQUIRED' | 'REVIEW_OVERDUE' | 'MISSING_EVIDENCE' | 'MISSING_FIELDS' | 'NORMAL'; severity: 'critical' | 'warning' | 'info'; type: string; message: string; href: string; dueDate?: string | null }>;
+  nextAction?: { kind: string; status?: string | null; area?: string | null; milestone?: string | null; reviewer?: string | null; waitingFor?: string | null; submittedBy?: string | null; owner?: string | null; dueDate?: string | null; href: string; buttonLabel: string } | null;
+  completionBreakdown?: Array<{ label: string; value: number }>;
   upcomingDeadlines: Array<{ dueDate?: string | null; item: string; owner?: string | null; status: string; href: string }>;
   deadlines: { nextMilestone?: { id: string; name: string; dueDate?: string | null } | null; nextReview?: any; capaDue?: any; billingDue?: any; reportDue?: string | null; lateTasks: number };
   repository: { folders: number; files: number; recentlyAdded: number; storageUsed: number; evidenceLinked: number; recentFiles: Array<{ id: string; name: string; source: string; size?: number | null; createdAt: string }> };
@@ -564,6 +579,24 @@ function formatDate(value?: string | null) {
   return new Date(value).toLocaleDateString('en-GB');
 }
 
+function formatShortDate(value?: string | null) {
+  if (!value) return '-';
+  return new Date(value).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+function relativeDue(value?: string | null) {
+  if (!value) return '';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(value);
+  due.setHours(0, 0, 0, 0);
+  const days = Math.round((due.getTime() - today.getTime()) / 86400000);
+  if (days < 0) return 'Overdue';
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+  return `Due in ${days} days`;
+}
+
 function userName(users: ProjectUser[], id?: string | null) {
   return users.find((item) => item.id === id)?.name || '-';
 }
@@ -678,9 +711,13 @@ function statusPill(status?: string) {
     'inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide',
     status === 'Completed' || status === 'COMPLETED' || status === 'Paid' || status === 'Closed'
       ? 'bg-emerald-100 text-emerald-700'
+      : status === 'Awaiting Review' || status === 'Submitted for Review' || status === 'Awaiting Reviewer' || status === 'Awaiting Client' || status === 'In Progress'
+        ? 'bg-blue-100 text-blue-700'
+        : status === 'Rework Required' || status === 'Returned'
+          ? 'bg-orange-100 text-orange-700'
       : status === 'Delayed' || status === 'Blocked' || status === 'Overdue'
         ? 'bg-rose-100 text-rose-700'
-        : status === 'In Progress' || status === 'Under Review' || status === 'Invoice Raised' || status === 'Open'
+        : status === 'Under Review' || status === 'Invoice Raised' || status === 'Open'
           ? 'bg-amber-100 text-amber-700'
           : 'bg-slate-100 text-slate-700',
   );
@@ -1248,10 +1285,6 @@ function SnapshotCard({ title, primary, lines, to }: { title: string; primary: s
   return to ? <Link to={to}>{body}</Link> : body;
 }
 
-function AttentionBadge({ severity }: { severity: string }) {
-  return <span className={cn('rounded-full px-2 py-1 text-[10px] font-bold uppercase', severity === 'critical' ? 'bg-rose-100 text-rose-700' : severity === 'warning' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600')}>{severity}</span>;
-}
-
 function ProjectOverviewTab({ project }: { project: ApiProject; users: ProjectUser[] }) {
   const [dashboard, setDashboard] = useState<OverviewDashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1277,73 +1310,119 @@ function ProjectOverviewTab({ project }: { project: ApiProject; users: ProjectUs
   if (loading && !dashboard) return <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm font-bold text-slate-500">Loading executive audit cockpit...</div>;
   if (!dashboard) return <div className="rounded border border-rose-100 bg-rose-50 p-6 text-sm font-semibold text-rose-700">{error || 'Overview dashboard unavailable.'}</div>;
 
-  const healthTone = dashboard.health.status === 'HEALTHY' ? 'bg-emerald-500' : dashboard.health.status === 'CRITICAL' ? 'bg-rose-600' : 'bg-amber-500';
-  const healthLabel = dashboard.health.status === 'HEALTHY' ? 'Healthy' : dashboard.health.status === 'CRITICAL' ? 'Critical' : 'Needs Attention';
   const progress = dashboard.project.overallProgress || dashboard.kpis.overallProgress || 0;
   const timeline = dashboard.milestones.timeline || [];
+  const healthState = dashboard.health.status === 'CRITICAL' ? 'red' : dashboard.health.status === 'NEEDS_ATTENTION' ? 'amber' : 'green';
+  const healthLabel = dashboard.health.status === 'CRITICAL' ? 'Critical' : dashboard.health.status === 'NEEDS_ATTENTION' ? 'Needs Attention' : 'Healthy';
+  const showObservations = dashboard.observations.total > 0;
+  const showReviews = dashboard.snapshot.reviews.pending + dashboard.snapshot.reviews.returned + dashboard.snapshot.reviews.approved > 0;
+  const openTimeline = () => window.dispatchEvent(new CustomEvent('auditie-open-tab', { detail: 'Timeline' }));
 
   return (
     <div className="space-y-4">
       {error && <div className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">{error}</div>}
-      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div>
+      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0 flex-1">
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Executive Audit Cockpit</p>
             <h2 className="mt-1 text-2xl font-extrabold text-slate-950">{dashboard.project.name}</h2>
-            <p className="text-sm font-semibold text-slate-500">{dashboard.project.clientName} - {dashboard.project.framework || '-'}</p>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-bold text-slate-600 md:grid-cols-4">
-              <span>Industry: {dashboard.project.industry || '-'}</span>
-              <span>Project Manager: {dashboard.project.projectManager || dashboard.project.auditManager || '-'}</span>
-              <span>Execution: {formatDate(dashboard.project.startDate)} to {formatDate(dashboard.project.endDate)}</span>
-              <span>Current Milestone: {dashboard.project.currentMilestone || '-'}</span>
-              <span>Status: {dashboard.project.status}</span>
+            <div className="mt-4 grid grid-cols-2 gap-3 text-xs font-semibold text-slate-600 md:grid-cols-4">
+              <span>Framework<br /><b className="text-slate-950">{dashboard.project.framework || '-'}</b></span>
+              <span>Client<br /><b className="text-slate-950">{dashboard.project.clientName}</b></span>
+              <span>Current Phase<br /><b className="text-slate-950">{dashboard.project.currentMilestone || dashboard.project.currentPhase || '-'}</b></span>
+              <span>Audit Manager<br /><b className="text-slate-950">{dashboard.project.auditManager || '-'}</b></span>
+              <span>Execution<br /><b className="text-slate-950">{formatShortDate(dashboard.project.startDate)} - {formatShortDate(dashboard.project.endDate)}</b></span>
+              <span>Reporting Deadline<br /><b className="text-slate-950">{formatShortDate(dashboard.project.reportingDeadline)}</b></span>
+              <span>Project Status<br /><b className="text-slate-950">{dashboard.project.status}</b></span>
             </div>
           </div>
           <div className="min-w-[220px] rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-600"><span>Overall Progress</span><span>{dashboard.milestones.completed}/{dashboard.milestones.total} milestones</span></div>
+            <div className="flex items-center justify-between text-xs font-bold text-slate-600"><span>Overall Project Progress</span><span>{dashboard.milestones.completed}/{dashboard.milestones.total} milestones</span></div>
             <p className="mt-2 text-3xl font-extrabold text-slate-950">{progress}%</p>
-            <MiniBar value={progress} tone="bg-blue-600" />
+            <div className="mt-2 h-3 rounded-full bg-slate-200"><div className="h-full rounded-full bg-blue-600" style={{ width: `${Math.max(0, Math.min(100, progress || 0))}%` }} /></div>
+            <p className="mt-2 text-[10px] font-semibold text-slate-500">Milestones {dashboard.project.progressBreakdown?.milestones ?? 0}% / Areas {dashboard.project.progressBreakdown?.auditAreas ?? 0}% / Reviews {dashboard.project.progressBreakdown?.reviews ?? 0}%</p>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-5">
-        {dashboard.healthStrip.map((item) => (
-          <div key={item.label} className="rounded border border-slate-100 bg-slate-50 p-3">
-            <div className="flex items-center gap-2"><HealthDot state={item.state} /><p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{item.label}</p></div>
-            <p className="mt-2 text-sm font-extrabold text-slate-950">{item.value}</p>
+      {Boolean(dashboard.executiveSummary?.length) && (
+        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Executive Summary</p>
+          <div className="mt-2 grid grid-cols-1 gap-2 text-sm font-semibold text-slate-700 md:grid-cols-2">
+            {dashboard.executiveSummary?.map((line) => <p key={line}>{line}</p>)}
           </div>
-        ))}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <button type="button" onClick={openTimeline} className="h-full rounded-lg border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-300">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Current Milestone</p>
+          <p className="mt-2 text-xl font-extrabold text-slate-950">{dashboard.milestones.current || '-'}</p>
+          <div className="mt-3 space-y-1 text-xs font-semibold text-slate-600">
+            <p>Progress: {dashboard.milestones.completed} of {dashboard.milestones.total} completed</p>
+            <p>Next: {dashboard.milestones.next || '-'}</p>
+            <p>Owner: {dashboard.milestones.currentDetails?.owner || '-'}</p>
+            <p>Started: {formatShortDate(dashboard.milestones.currentDetails?.started)}</p>
+            <p>Due: {formatShortDate(dashboard.milestones.currentDetails?.dueDate)}</p>
+          </div>
+        </button>
+        <div className="h-full rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2"><HealthDot state={healthState} /><p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Project Health</p></div>
+          <p className="mt-2 text-xl font-extrabold text-slate-950">{healthLabel}</p>
+          <div className="mt-3 space-y-1 text-xs font-semibold text-slate-600">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Reason</p>
+            {dashboard.health.reasons.slice(0, 2).map((reason) => <p key={reason}>{reason}</p>)}
+          </div>
+        </div>
+        <SnapshotCard title="Audit Areas" primary={`${dashboard.snapshot.auditAreas.total} Areas`} to={`/projects/${project.id}?tab=Assignments`} lines={[`${dashboard.snapshot.auditAreas.completed} Completed`, `${dashboard.snapshot.auditAreas.inReview} In Review`, `${dashboard.snapshot.auditAreas.pending} Pending`]} />
+        {showReviews && <SnapshotCard title="Reviews" primary={`${dashboard.snapshot.reviews.pending} Pending`} to={`/projects/${project.id}?tab=Assignments`} lines={[`${dashboard.snapshot.reviews.returned} Returned`, `${dashboard.snapshot.reviews.approved} Approved`]} />}
+        {showObservations && <SnapshotCard title="Observations" primary={`${dashboard.observations.total} Raised`} to={`/projects/${project.id}?tab=Observations`} lines={[`${dashboard.observations.pendingReview} Pending Review`, `${dashboard.observations.closed} Closed`]} />}
       </div>
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
-        <SnapshotCard title="Audit Areas" primary={`${dashboard.snapshot.auditAreas.total} Total`} to={`/projects/${project.id}`} lines={[`${dashboard.snapshot.auditAreas.completed} Completed`, `${dashboard.snapshot.auditAreas.inReview} In Review`, `${dashboard.snapshot.auditAreas.pending} Pending`]} />
-        <SnapshotCard title="Milestones" primary={`${dashboard.snapshot.milestones.total} Total`} lines={[`${dashboard.snapshot.milestones.completed} Complete`, `${dashboard.snapshot.milestones.active} Active`, `${dashboard.snapshot.milestones.pending} Pending`]} />
-        <SnapshotCard title="Observations" primary={`${dashboard.snapshot.observations.open} Open`} lines={[`${dashboard.snapshot.observations.closed} Closed`, `${dashboard.snapshot.observations.high} High`, `${dashboard.snapshot.observations.critical} Critical`]} />
-        <SnapshotCard title="Evidence Review" primary={`${dashboard.snapshot.evidenceReview.pending} Pending`} to={`/projects/${project.id}?tab=Repository&reviewStatus=PENDING_REVIEW`} lines={[`${dashboard.snapshot.evidenceReview.approved} Approved`, `${dashboard.snapshot.evidenceReview.returned} Returned`]} />
-        <SnapshotCard title="Reviews" primary={`${dashboard.snapshot.reviews.pending} Pending`} lines={[`${dashboard.snapshot.reviews.returned} Returned`, `${dashboard.snapshot.reviews.approved} Approved`]} />
-        <SnapshotCard title="CAPA" primary={`${dashboard.snapshot.capa.open} Open`} lines={[`${dashboard.snapshot.capa.closed} Closed`, `${dashboard.snapshot.capa.overdue} Overdue`]} />
-      </div>
-
-      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between"><h3 className="font-extrabold text-slate-950">Project Timeline</h3><button onClick={() => window.dispatchEvent(new CustomEvent('auditie-open-tab', { detail: 'Timeline' }))} className="text-xs font-bold text-blue-600">Open Timeline</button></div>
-        <div className="mt-5 overflow-x-auto">
-          <div className="flex min-w-max items-start gap-3">
+        <div className="mt-3 flex flex-wrap gap-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+          <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-emerald-500" />Completed</span>
+          <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-blue-500" />Active</span>
+          <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-slate-300" />Pending</span>
+          <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-orange-500" />Returned</span>
+          <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-rose-600" />Overdue</span>
+        </div>
+        <div className="mt-3 overflow-x-auto">
+          <div className="flex min-w-max items-start gap-2">
             {timeline.length === 0 && <p className="text-sm font-semibold text-slate-500">No milestones generated yet.</p>}
-            {timeline.map((item, index) => (
-              <Link key={item.id} to={`/projects/${project.id}/milestones/${item.id}`} className="group flex min-w-[160px] flex-1 flex-col items-center text-center">
-                <div className="flex w-full items-center">
-                  <span className={cn('h-1 flex-1 rounded', index === 0 ? 'bg-transparent' : item.isCompleted ? 'bg-emerald-300' : item.isOverdue ? 'bg-rose-300' : 'bg-slate-200')} />
-                  <span className={cn('mx-2 flex h-9 w-9 items-center justify-center rounded-full text-xs font-extrabold ring-4 ring-white', item.isCompleted ? 'bg-emerald-600 text-white' : item.isOverdue ? 'bg-rose-600 text-white' : item.isCurrent ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600')}>{index + 1}</span>
-                  <span className={cn('h-1 flex-1 rounded', index === timeline.length - 1 ? 'bg-transparent' : item.isCompleted ? 'bg-emerald-300' : 'bg-slate-200')} />
-                </div>
-                <p className="mt-2 text-xs font-extrabold text-slate-950 group-hover:text-blue-700">{item.name}</p>
-                <p className="text-[10px] font-semibold text-slate-500">{formatDate(item.dueDate)}</p>
-              </Link>
+            {timeline.map((item, index) => {
+              const nodeTone = item.isOverdue ? 'bg-rose-600 text-white' : item.isReturned ? 'bg-orange-500 text-white' : item.isCompleted ? 'bg-emerald-600 text-white' : item.isCurrent ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600';
+              const lineTone = item.isOverdue ? 'bg-rose-300' : item.isReturned ? 'bg-orange-300' : item.isCompleted ? 'bg-emerald-300' : item.isCurrent ? 'bg-blue-300' : 'bg-slate-200';
+              return (
+                <Link key={item.id} to={`/projects/${project.id}/milestones/${item.id}`} title={`${item.name} - ${item.status} - ${formatDate(item.dueDate)}`} className="group flex min-w-[140px] flex-1 flex-col items-center text-center">
+                  <div className="flex w-full items-center">
+                    <span className={cn('h-1 flex-1 rounded', index === 0 ? 'bg-transparent' : lineTone)} />
+                    <span className={cn('mx-2 flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-extrabold ring-4 ring-white', nodeTone)}>{index + 1}</span>
+                    <span className={cn('h-1 flex-1 rounded', index === timeline.length - 1 ? 'bg-transparent' : lineTone)} />
+                  </div>
+                  <p className="mt-1 flex items-center justify-center gap-1 text-[11px] font-extrabold text-slate-950 group-hover:text-blue-700"><i className={cn('h-1.5 w-1.5 rounded-full', item.isOverdue ? 'bg-rose-600' : item.isReturned ? 'bg-orange-500' : item.isCompleted ? 'bg-emerald-500' : item.isCurrent ? 'bg-blue-500' : 'bg-slate-300')} />{item.name}</p>
+                  <p className="text-[10px] font-semibold text-slate-500">{formatDate(item.dueDate)}</p>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {Boolean(dashboard.completionBreakdown?.length) && (
+        <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="font-extrabold text-slate-950">Project Completion Breakdown</h3>
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {dashboard.completionBreakdown?.map((item) => (
+              <div key={item.label} className="rounded border border-slate-100 p-3">
+                <div className="mb-2 flex items-center justify-between text-xs font-bold text-slate-600"><span>{item.label}</span><span>{item.value}%</span></div>
+                <MiniBar value={item.value} tone={item.value >= 100 ? 'bg-emerald-600' : item.value > 0 ? 'bg-blue-600' : 'bg-slate-300'} />
+              </div>
             ))}
           </div>
         </div>
-      </div>
+      )}
 
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-4"><h3 className="font-extrabold text-slate-950">Audit Area Summary</h3></div>
@@ -1351,14 +1430,20 @@ function ProjectOverviewTab({ project }: { project: ApiProject; users: ProjectUs
           {dashboard.areas.length === 0 && <p className="text-sm font-semibold text-slate-500">No audit areas assigned yet.</p>}
           {dashboard.areas.map((area) => (
             <Link key={area.areaId} to={`/projects/${project.id}/areas/${area.areaId}`} className="rounded-lg border border-slate-200 p-4 transition hover:border-blue-300 hover:shadow-sm">
-              <div className="flex items-start justify-between gap-3"><div><p className="font-extrabold text-slate-950">{area.name}</p><p className="text-xs font-semibold text-slate-500">Due {formatDate(area.dueDate)}</p></div><span className={statusPill(area.status)}>{area.status}</span></div>
-              <div className="mt-4"><div className="mb-1 flex justify-between text-xs font-bold text-slate-600"><span>{area.completedRows} / {area.checklistRows} Controls</span><span>{area.progress}%</span></div><MiniBar value={area.progress} /></div>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-semibold text-slate-600">
-                <span>Maker: <b>{area.maker || '-'}</b></span>
-                <span>Reviewer: <b>{area.reviewer || '-'}</b></span>
-                <span>Observations: <b>{area.openObservations}</b></span>
-                <span>Evidence: <b>{area.evidenceCount}</b></span>
+              <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+                <p className="font-extrabold text-slate-950">{area.name}</p>
+                <span className={statusPill(area.status)}>{area.status}</span>
               </div>
+              <div className="mt-3"><MiniBar value={area.progress} tone="bg-blue-600" /></div>
+              <div className="mt-3 grid grid-cols-2 gap-3 text-xs font-semibold text-slate-600">
+                <span>Progress<br /><b className="text-slate-950">{area.progress}%</b></span>
+                <span>Controls<br /><b className="text-slate-950">{area.completedRows} / {area.checklistRows}</b></span>
+                <span>Pending<br /><b className="text-slate-950">{area.pendingRows}</b></span>
+                <span>Reviewer<br /><b className="text-slate-950">{area.reviewer || '-'}</b></span>
+                <span>Due<br /><b className="text-slate-950">{formatShortDate(area.dueDate)}</b></span>
+                <span>Observations<br /><b className="text-slate-950">{area.openObservations}</b></span>
+              </div>
+              <div className="mt-3 text-right text-xs font-bold text-blue-600">Open Area -&gt;</div>
             </Link>
           ))}
         </div>
@@ -1367,32 +1452,46 @@ function ProjectOverviewTab({ project }: { project: ApiProject; users: ProjectUs
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-4">
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between"><h3 className="font-extrabold text-slate-950">Attention Required</h3><span className={cn('rounded-full px-2.5 py-1 text-[10px] font-bold uppercase text-white', healthTone)}>{healthLabel}</span></div>
-            <div className="mt-3 space-y-2">
-              {dashboard.attentionRequired.length === 0 && <p className="rounded border border-dashed border-slate-200 p-4 text-center text-sm font-semibold text-slate-500">No immediate action required.</p>}
-              {dashboard.attentionRequired.map((item, index) => (
-                <Link key={`${item.type}-${index}`} to={item.href} className="flex items-center justify-between gap-3 rounded border border-slate-100 p-3 hover:border-blue-300">
-                  <div><p className="text-sm font-bold text-slate-950">{item.message}</p><p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{item.type}{item.dueDate ? ` - ${formatDate(item.dueDate)}` : ''}</p></div>
-                  <AttentionBadge severity={item.severity} />
-                </Link>
-              ))}
-            </div>
+            <h3 className="font-extrabold text-slate-950">Next Action</h3>
+            {dashboard.nextAction ? (
+              <div className="mt-3 rounded border border-slate-100 p-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{dashboard.nextAction.status || 'Next Action'}</p>
+                <p className="mt-1 text-lg font-extrabold text-slate-950">{dashboard.nextAction.kind}</p>
+                <div className="mt-3 grid grid-cols-2 gap-3 text-xs font-semibold text-slate-600">
+                  {dashboard.nextAction.area && <span>Area<br /><b>{dashboard.nextAction.area}</b></span>}
+                  {dashboard.nextAction.milestone && <span>Milestone<br /><b>{dashboard.nextAction.milestone}</b></span>}
+                  <span>Waiting For<br /><b>{dashboard.nextAction.waitingFor || dashboard.nextAction.reviewer || dashboard.nextAction.owner || '-'}</b></span>
+                  <span>Submitted By<br /><b>{dashboard.nextAction.submittedBy || '-'}</b></span>
+                  <span>Due<br /><b>{formatDate(dashboard.nextAction.dueDate)}</b></span>
+                </div>
+                {dashboard.nextAction.buttonLabel === 'Open Timeline' ? (
+                  <button type="button" onClick={openTimeline} className="mt-4 rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700">{dashboard.nextAction.buttonLabel}</button>
+                ) : (
+                  <Link to={dashboard.nextAction.href} className="mt-4 inline-flex rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700">{dashboard.nextAction.buttonLabel}</Link>
+                )}
+              </div>
+            ) : (
+              <div className="mt-3 rounded border border-dashed border-slate-200 p-4 text-center">
+                <p className="text-sm font-extrabold text-slate-700">Everything looks good.</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500">No urgent actions require attention.</p>
+              </div>
+            )}
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="font-extrabold text-slate-950">Team Workload</h3>
             <div className="mt-3 overflow-x-auto">
               <table className="min-w-full text-left text-sm">
-                <thead className="text-[10px] uppercase tracking-widest text-slate-500"><tr><th className="py-2">Name</th><th>Areas</th><th>Open Reviews</th><th>Pending Tasks</th><th>Overdue</th><th>Workload</th></tr></thead>
+                <thead className="text-[10px] uppercase tracking-widest text-slate-500"><tr><th className="py-2">Name</th><th>Current Assignment</th><th>Pending Reviews</th><th>Returned Reviews</th><th>Overdue Items</th><th>Current Status</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {dashboard.team.map((member) => (
                     <tr key={member.userId}>
                       <td className="py-3 font-bold text-slate-950">{member.name}</td>
-                      <td>{member.assignedAreas}</td>
+                      <td className="font-semibold text-slate-700">{member.currentAssignment || '-'}</td>
                       <td>{member.pendingReviews}</td>
-                      <td>{member.pendingTasks ?? member.pendingRows}</td>
+                      <td>{member.returnedReviews ?? 0}</td>
                       <td>{member.overdueItems}</td>
-                      <td className="min-w-[130px]"><div className="flex items-center gap-2"><MiniBar value={member.workloadPercent} /><span className="text-xs font-bold">{member.workloadPercent}%</span></div></td>
+                      <td><span className={cn('rounded-full px-2 py-1 text-[10px] font-bold uppercase', member.workloadStatus === 'Overloaded' ? 'bg-orange-100 text-orange-700' : member.workloadStatus === 'Busy' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700')}>{member.workloadStatus || 'Available'}</span></td>
                     </tr>
                   ))}
                   {dashboard.team.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-sm font-semibold text-slate-500">No assigned workload yet.</td></tr>}
@@ -1409,15 +1508,18 @@ function ProjectOverviewTab({ project }: { project: ApiProject; users: ProjectUs
               {dashboard.upcomingDeadlines.length === 0 && <p className="text-sm font-semibold text-slate-500">No upcoming deadlines.</p>}
               {dashboard.upcomingDeadlines.map((item, index) => (
                 <Link key={`${item.item}-${index}`} to={item.href} className="block rounded border border-slate-100 p-3 hover:border-blue-300">
-                  <p className="text-sm font-bold text-slate-950">{item.item}</p>
-                  <p className="text-xs font-semibold text-slate-500">{formatDate(item.dueDate)} - {item.owner || '-'} - {item.status}</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-bold text-slate-950">{item.item}</p>
+                    <span className={cn('rounded-full px-2 py-1 text-[10px] font-bold uppercase', relativeDue(item.dueDate) === 'Overdue' ? 'bg-rose-100 text-rose-700' : relativeDue(item.dueDate) === 'Today' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700')}>{relativeDue(item.dueDate)}</span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs font-semibold text-slate-500">
+                    <span>Due<br /><b className="text-slate-700">{formatDate(item.dueDate)}</b></span>
+                    <span>Reviewer<br /><b className="text-slate-700">{item.owner || '-'}</b></span>
+                    <span>Status<br /><b className="text-slate-700">{item.status}</b></span>
+                  </div>
                 </Link>
               ))}
             </div>
-          </div>
-          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="font-extrabold text-slate-950">Health Reasons</h3>
-            <div className="mt-3 space-y-2">{dashboard.health.reasons.map((reason) => <p key={reason} className="rounded border border-slate-100 bg-slate-50 p-2 text-xs font-semibold text-slate-600">{reason}</p>)}</div>
           </div>
         </aside>
       </div>
@@ -2412,6 +2514,218 @@ function ProjectActivityTimeline({ project, users }: { project: ApiProject; user
   );
 }
 
+function EditableTableField({
+  value,
+  className,
+  multiline = true,
+  type = 'text',
+  placeholder,
+  onCommit,
+}: {
+  value: string;
+  className: string;
+  multiline?: boolean;
+  type?: string;
+  placeholder?: string;
+  onCommit: (value: string) => void | Promise<void>;
+}) {
+  const [draft, setDraft] = useState(value);
+  const focusedRef = useRef(false);
+
+  useEffect(() => {
+    if (!focusedRef.current) setDraft(value);
+  }, [value]);
+
+  const commit = () => {
+    focusedRef.current = false;
+    if (draft !== value) {
+      const next = draft;
+      window.setTimeout(() => void onCommit(next), 120);
+    }
+  };
+
+  if (!multiline) {
+    return (
+      <input
+        className={className}
+        type={type}
+        value={draft}
+        placeholder={placeholder}
+        onFocus={() => { focusedRef.current = true; }}
+        onClick={(event) => event.currentTarget.focus()}
+        onChange={(event) => setDraft(event.currentTarget.value)}
+        onBlur={commit}
+      />
+    );
+  }
+
+  return (
+    <textarea
+      className={className}
+      value={draft}
+      placeholder={placeholder}
+      onFocus={() => { focusedRef.current = true; }}
+      onClick={(event) => event.currentTarget.focus()}
+      onChange={(event) => setDraft(event.currentTarget.value)}
+      onBlur={commit}
+    />
+  );
+}
+
+const SimpleEditableGridCell = React.memo(function SimpleEditableGridCell({
+  value,
+  initialValue,
+  label,
+  selected,
+  editing,
+  canEdit,
+  type = 'text',
+  options,
+  onSelect,
+  onEdit,
+  onCommit,
+  onCancel,
+  onMove,
+}: {
+  value: string;
+  initialValue?: string;
+  label: string;
+  selected: boolean;
+  editing: boolean;
+  canEdit: boolean;
+  type?: string;
+  options?: string[] | null;
+  onSelect: () => void;
+  onEdit: (initialValue?: string) => void;
+  onCommit: (value: string) => void;
+  onCancel: () => void;
+  onMove: (direction: 'up' | 'down' | 'left' | 'right' | 'next' | 'previous') => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const cellRef = useRef<HTMLDivElement | null>(null);
+  const editorRef = useRef<HTMLTextAreaElement | HTMLInputElement | HTMLSelectElement | null>(null);
+  const cancelledRef = useRef(false);
+
+  useEffect(() => {
+    if (editing) {
+      cancelledRef.current = false;
+      setDraft(initialValue ?? value);
+    }
+  }, [editing, initialValue, value]);
+
+  useEffect(() => {
+    if (!editing) return;
+    window.setTimeout(() => {
+      editorRef.current?.focus();
+      if (editorRef.current instanceof HTMLTextAreaElement || editorRef.current instanceof HTMLInputElement) editorRef.current.select();
+    }, 0);
+  }, [editing]);
+
+  useEffect(() => {
+    if (selected && !editing) cellRef.current?.focus();
+  }, [selected, editing]);
+
+  const commit = (direction?: 'down' | 'next' | 'previous') => {
+    if (cancelledRef.current) return;
+    onCommit(draft);
+    if (direction === 'down') onMove('down');
+    if (direction === 'next') onMove('next');
+    if (direction === 'previous') onMove('previous');
+  };
+
+  if (editing) {
+    if (type === 'status' || options?.length) {
+      return (
+        <select
+          ref={(node) => { editorRef.current = node; }}
+          className="h-9 w-full rounded border border-blue-400 bg-white px-2 text-xs font-bold uppercase outline-none ring-2 ring-blue-100"
+          value={draft || options?.[0] || ''}
+          onChange={(event) => {
+            setDraft(event.currentTarget.value);
+            onCommit(event.currentTarget.value);
+            onMove('next');
+          }}
+          onBlur={() => commit()}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') { event.preventDefault(); cancelledRef.current = true; onCancel(); }
+            if (event.key === 'Enter') { event.preventDefault(); commit('down'); }
+            if (event.key === 'Tab') { event.preventDefault(); commit(event.shiftKey ? 'previous' : 'next'); }
+          }}
+        >
+          {(options || []).map((option) => <option key={option} value={option}>{option}</option>)}
+        </select>
+      );
+    }
+
+    if (type === 'date' || type === 'number') {
+      return (
+        <input
+          ref={(node) => { editorRef.current = node; }}
+          className="h-9 w-full rounded border border-blue-400 bg-white px-2 text-xs font-semibold text-slate-800 outline-none ring-2 ring-blue-100"
+          type={type}
+          value={draft}
+          onChange={(event) => setDraft(event.currentTarget.value)}
+          onBlur={() => commit()}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') { event.preventDefault(); cancelledRef.current = true; onCancel(); }
+            if (event.key === 'Enter') { event.preventDefault(); commit('down'); }
+            if (event.key === 'Tab') { event.preventDefault(); commit(event.shiftKey ? 'previous' : 'next'); }
+          }}
+        />
+      );
+    }
+
+    return (
+      <textarea
+        ref={(node) => { editorRef.current = node; }}
+        className="min-h-[76px] w-full resize-none rounded border border-blue-400 bg-white px-2 py-1 text-xs font-semibold leading-relaxed text-slate-800 outline-none ring-2 ring-blue-100"
+        value={draft}
+        onChange={(event) => setDraft(event.currentTarget.value)}
+        onBlur={() => commit()}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') { event.preventDefault(); cancelledRef.current = true; onCancel(); }
+          if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); commit('down'); }
+          if (event.key === 'Tab') { event.preventDefault(); commit(event.shiftKey ? 'previous' : 'next'); }
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      ref={cellRef}
+      role="gridcell"
+      aria-label={label}
+      tabIndex={0}
+      className={cn(
+        'min-h-[78px] w-full rounded-sm border px-2 py-1 text-xs font-semibold leading-relaxed outline-none',
+        selected ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-transparent bg-transparent',
+        canEdit ? 'cursor-cell' : 'cursor-default',
+      )}
+      onClick={(event) => {
+        event.currentTarget.focus();
+        onSelect();
+      }}
+      onDoubleClick={() => canEdit && onEdit()}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') { event.preventDefault(); onCancel(); return; }
+        if (event.key === 'Enter') { event.preventDefault(); if (canEdit) onEdit(); return; }
+        if (event.key === 'Tab') { event.preventDefault(); onMove(event.shiftKey ? 'previous' : 'next'); return; }
+        if (event.key === 'ArrowUp') { event.preventDefault(); onMove('up'); return; }
+        if (event.key === 'ArrowDown') { event.preventDefault(); onMove('down'); return; }
+        if (event.key === 'ArrowLeft') { event.preventDefault(); onMove('left'); return; }
+        if (event.key === 'ArrowRight') { event.preventDefault(); onMove('right'); return; }
+        if (canEdit && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          event.preventDefault();
+          onEdit(event.key);
+        }
+      }}
+    >
+      <span className={cn('block min-h-[68px] whitespace-pre-wrap break-words', type === 'status' && 'inline-flex min-h-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase text-slate-700')}>{value || '-'}</span>
+    </div>
+  );
+});
+
 function TableChecklistGrid({
   area,
   canEdit,
@@ -2447,6 +2761,12 @@ function TableChecklistGrid({
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>([]);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [message, setMessage] = useState('');
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [selectedCell, setSelectedCell] = useState<GridCellCoord | null>(null);
+  const [editingCell, setEditingCell] = useState<GridCellCoord | null>(null);
+  const [editInitialValue, setEditInitialValue] = useState<string | undefined>(undefined);
+  const saveTimersRef = useRef<Record<string, number>>({});
+  const pendingSavePatchesRef = useRef<Record<string, Partial<TableChecklistRow>>>({});
   const importRef = useRef<HTMLInputElement | null>(null);
   const columnHelper = createColumnHelper<TableChecklistRow>();
 
@@ -2467,6 +2787,10 @@ function TableChecklistGrid({
     loadTable().catch(console.error);
   }, [area.id]);
 
+  useEffect(() => () => {
+    Object.values(saveTimersRef.current).forEach((timer) => window.clearTimeout(timer as number));
+  }, []);
+
   const saveRow = async (row: TableChecklistRow, patch: Partial<TableChecklistRow>) => {
     const next = { ...row, ...patch, rowData: { ...row.rowData, ...(patch.rowData || {}) } };
     setRows((current) => current.map((item) => item.id === row.id ? next : item));
@@ -2477,6 +2801,37 @@ function TableChecklistGrid({
     setRows((current) => current.map((item) => item.id === row.id ? saved : item));
     setMessage('Saved.');
     await onActivityRefresh();
+  };
+
+  const scheduleSaveRow = (row: TableChecklistRow, patch: Partial<TableChecklistRow>, delay = 500) => {
+    const key = row.id;
+    if (saveTimersRef.current[key]) window.clearTimeout(saveTimersRef.current[key]);
+    pendingSavePatchesRef.current[key] = {
+      ...(pendingSavePatchesRef.current[key] || {}),
+      ...patch,
+      rowData: {
+        ...(pendingSavePatchesRef.current[key]?.rowData || {}),
+        ...(patch.rowData || {}),
+      },
+    };
+    setSaveState('saving');
+    saveTimersRef.current[key] = window.setTimeout(() => {
+      const pendingPatch = pendingSavePatchesRef.current[key] || {};
+      delete pendingSavePatchesRef.current[key];
+      apiJson(`/api/table-rows/${row.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(pendingPatch),
+      })
+        .then(() => {
+          setRows((current) => current.map((item) => item.id === row.id ? { ...item, ...pendingPatch, rowData: { ...item.rowData, ...(pendingPatch.rowData || {}) } } : item));
+          setSaveState('saved');
+          window.setTimeout(() => setSaveState('idle'), 1200);
+        })
+        .catch(() => {
+          setSaveState('error');
+          setMessage('Save failed. Edit again or retry.');
+        });
+    }, delay);
   };
 
   const addRow = async () => {
@@ -2495,6 +2850,7 @@ function TableChecklistGrid({
     await apiJson(`/api/table-rows/${row.id}`, { method: 'DELETE' });
     setRows((current) => current.filter((item) => item.id !== row.id));
     setMessage('Row deleted.');
+    await onReload();
     await onActivityRefresh();
   };
 
@@ -2737,52 +3093,162 @@ function TableChecklistGrid({
     }
   };
 
+  const gridColumnDefs: GridColumnDef[] = [
+    ...(template?.columns || []).map((definition) => ({
+      id: definition.columnKey,
+      label: definition.columnName,
+      kind: 'rowData' as const,
+      columnKey: definition.columnKey,
+      type: definition.columnType,
+      options: definition.options,
+      width: 280,
+    })),
+    { id: 'status', label: 'Status', kind: 'field', field: 'status', type: 'status', options: ['Pending', 'Compliant', 'Non-Compliant', 'Not Applicable'], width: 180 },
+    { id: 'comments', label: 'Comments', kind: 'field', field: 'comments', type: 'text', width: 240 },
+    { id: 'observation', label: 'Observation', kind: 'field', field: 'observation', type: 'text', width: 260 },
+    { id: 'evidenceLink', label: 'Repository Evidence Link', kind: 'field', field: 'evidenceLink', type: 'text', width: 260 },
+  ];
+
+  const sameCell = (a?: GridCellCoord | null, b?: GridCellCoord | null) => !!a && !!b && a.rowIndex === b.rowIndex && a.columnIndex === b.columnIndex;
+
+  const getCellValue = (row: TableChecklistRow, column: GridColumnDef) => {
+    if (column.kind === 'rowData') return String(row.rowData?.[column.columnKey || ''] ?? '');
+    return String((row as any)[column.field || ''] ?? '');
+  };
+
+  const patchForCell = (column: GridColumnDef, value: string): Partial<TableChecklistRow> => {
+    if (column.kind === 'rowData') return { rowData: { [column.columnKey || column.id]: value } };
+    return { [column.field || column.id]: value } as Partial<TableChecklistRow>;
+  };
+
+  const mergeRowPatch = (row: TableChecklistRow, patch: Partial<TableChecklistRow>) => ({
+    ...row,
+    ...patch,
+    rowData: { ...row.rowData, ...(patch.rowData || {}) },
+  });
+
+  const moveCell = (from: GridCellCoord, direction: 'up' | 'down' | 'left' | 'right' | 'next' | 'previous') => {
+    if (!rows.length || !gridColumnDefs.length) return;
+    const next = { ...from };
+    if (direction === 'up') next.rowIndex -= 1;
+    if (direction === 'down') next.rowIndex += 1;
+    if (direction === 'left') next.columnIndex -= 1;
+    if (direction === 'right') next.columnIndex += 1;
+    if (direction === 'next') {
+      next.columnIndex += 1;
+      if (next.columnIndex >= gridColumnDefs.length) {
+        next.columnIndex = 0;
+        next.rowIndex += 1;
+      }
+    }
+    if (direction === 'previous') {
+      next.columnIndex -= 1;
+      if (next.columnIndex < 0) {
+        next.columnIndex = gridColumnDefs.length - 1;
+        next.rowIndex -= 1;
+      }
+    }
+    next.rowIndex = Math.max(0, Math.min(rows.length - 1, next.rowIndex));
+    next.columnIndex = Math.max(0, Math.min(gridColumnDefs.length - 1, next.columnIndex));
+    setEditingCell(null);
+    setEditInitialValue(undefined);
+    setSelectedCell(next);
+  };
+
+  const applyCellValue = (rowIndex: number, columnIndex: number, value: string) => {
+    const row = rows[rowIndex];
+    const column = gridColumnDefs[columnIndex];
+    if (!row || !column || !canEdit) return;
+    if (getCellValue(row, column) === value) return;
+    const patch = patchForCell(column, value);
+    setRows((current) => current.map((item) => item.id === row.id ? mergeRowPatch(item, patch) : item));
+    scheduleSaveRow(row, patch);
+  };
+
+  const beginEdit = (coord: GridCellCoord, initialValue?: string) => {
+    const row = rows[coord.rowIndex];
+    const column = gridColumnDefs[coord.columnIndex];
+    if (!row || !column || !canEdit) return;
+    setSelectedCell(coord);
+    setEditingCell(coord);
+    setEditInitialValue(initialValue);
+  };
+
+  const renderGridCell = (row: TableChecklistRow, rowIndex: number, column: GridColumnDef) => {
+    const columnIndex = gridColumnDefs.findIndex((item) => item.id === column.id);
+    if (columnIndex < 0) return null;
+    const coord = { rowIndex, columnIndex };
+    return (
+      <SimpleEditableGridCell
+        value={getCellValue(row, column)}
+        initialValue={sameCell(editingCell, coord) ? editInitialValue : undefined}
+        label={`${column.label} row ${rowIndex + 1}`}
+        selected={sameCell(selectedCell, coord)}
+        editing={sameCell(editingCell, coord)}
+        canEdit={canEdit}
+        type={column.type}
+        options={column.options}
+        onSelect={() => {
+          setSelectedCell(coord);
+          if (column.id === 'status' && canEdit) {
+            beginEdit(coord);
+            return;
+          }
+          if (!sameCell(editingCell, coord)) {
+            setEditingCell(null);
+            setEditInitialValue(undefined);
+          }
+        }}
+        onEdit={(initialValue) => beginEdit(coord, initialValue)}
+        onCommit={(value) => {
+          applyCellValue(rowIndex, columnIndex, value);
+          setEditingCell(null);
+          setEditInitialValue(undefined);
+        }}
+        onCancel={() => {
+          if (sameCell(editingCell, coord)) {
+            setEditingCell(null);
+            setEditInitialValue(undefined);
+          } else {
+            setSelectedCell(null);
+          }
+        }}
+        onMove={(direction) => moveCell(coord, direction)}
+      />
+    );
+  };
+
   const columns = [
     ...(template?.columns || []).map((definition) => columnHelper.accessor((row) => row.rowData?.[definition.columnKey] ?? '', {
       id: definition.columnKey,
       header: definition.columnName,
       cell: ({ row, getValue }) => {
         const value = String(getValue() ?? '');
-        const baseClass = "min-h-[76px] w-[280px] rounded border border-transparent bg-transparent px-2 py-1 text-xs font-semibold leading-relaxed text-slate-700 outline-none focus:border-blue-300 focus:bg-white";
         if (!canEdit) return <span className="block w-[280px] whitespace-pre-wrap break-words text-xs font-semibold leading-relaxed text-slate-700">{value || '-'}</span>;
-        if (definition.columnType === 'select' && definition.options?.length) {
-          return (
-            <select className={baseClass} defaultValue={value} onBlur={(event) => saveRow(row.original, { rowData: { [definition.columnKey]: event.currentTarget.value } }).catch(console.error)}>
-              <option value="">-</option>
-              {definition.options.map((option) => <option key={option} value={option}>{option}</option>)}
-            </select>
-          );
-        }
-        if (definition.columnType === 'date' || definition.columnType === 'number') {
-          return <input className={cn(baseClass, 'min-h-10')} type={definition.columnType === 'date' ? 'date' : 'number'} defaultValue={value} onBlur={(event) => saveRow(row.original, { rowData: { [definition.columnKey]: event.currentTarget.value } }).catch(console.error)} />;
-        }
-        return <textarea className={baseClass} defaultValue={value} onBlur={(event) => saveRow(row.original, { rowData: { [definition.columnKey]: event.currentTarget.value } }).catch(console.error)} />;
+        const gridColumn = gridColumnDefs.find((item) => item.id === definition.columnKey);
+        return gridColumn ? renderGridCell(row.original, row.index, gridColumn) : null;
       },
     })),
     columnHelper.accessor('status', {
       header: 'Status',
-      cell: ({ row, getValue }) => (
-        <select disabled={!canEdit} className="rounded border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold uppercase" value={String(getValue())} onChange={(event) => saveRow(row.original, { status: event.target.value as TableChecklistRow['status'] }).catch(console.error)}>
-          {['Pending', 'Compliant', 'Non-Compliant', 'Not Applicable'].map((status) => <option key={status} value={status}>{status}</option>)}
-        </select>
-      ),
+      cell: ({ row, getValue }) => canEdit ? renderGridCell(row.original, row.index, gridColumnDefs.find((item) => item.id === 'status')!) : <span>{String(getValue())}</span>,
     }),
     columnHelper.accessor('comments', {
       header: 'Comments',
       cell: ({ row, getValue }) => canEdit
-        ? <textarea className="min-h-[76px] w-[240px] rounded border border-slate-200 px-2 py-1 text-xs leading-relaxed" defaultValue={String(getValue() || '')} onBlur={(event) => saveRow(row.original, { comments: event.currentTarget.value }).catch(console.error)} />
+        ? renderGridCell(row.original, row.index, gridColumnDefs.find((item) => item.id === 'comments')!)
         : <span className="block w-[240px] whitespace-pre-wrap break-words text-xs text-slate-600">{String(getValue() || '-')}</span>,
     }),
     columnHelper.accessor('observation', {
       header: 'Observation',
       cell: ({ row, getValue }) => canEdit
-        ? <textarea className="min-h-[76px] w-[260px] rounded border border-slate-200 px-2 py-1 text-xs leading-relaxed" defaultValue={String(getValue() || '')} onBlur={(event) => saveRow(row.original, { observation: event.currentTarget.value }).catch(console.error)} />
+        ? renderGridCell(row.original, row.index, gridColumnDefs.find((item) => item.id === 'observation')!)
         : <span className="block w-[260px] whitespace-pre-wrap break-words text-xs text-slate-600">{String(getValue() || '-')}</span>,
     }),
     columnHelper.accessor('evidenceLink', {
       header: 'Repository Evidence Link',
       cell: ({ row, getValue }) => canEdit
-        ? <textarea className="min-h-[76px] w-[260px] rounded border border-slate-200 px-2 py-1 text-xs leading-relaxed" placeholder="Repository path or item link" defaultValue={String(getValue() || '')} onBlur={(event) => linkRepositoryEvidence(row.original, event.currentTarget.value).catch(console.error)} />
+        ? renderGridCell(row.original, row.index, gridColumnDefs.find((item) => item.id === 'evidenceLink')!)
         : <span className="block w-[260px] whitespace-pre-wrap break-words text-xs text-blue-700">{String(getValue() || '-')}</span>,
     }),
     columnHelper.display({
@@ -2869,8 +3335,6 @@ function TableChecklistGrid({
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize: 20 } },
   });
 
   const questionBaseRows = table.getFilteredRowModel().rows;
@@ -2908,6 +3372,11 @@ function TableChecklistGrid({
         </div>
       </div>
       {message && <div className="border-b border-slate-100 bg-blue-50 px-4 py-2 text-xs font-bold text-blue-700">{message}</div>}
+      {viewMode === 'table' && saveState !== 'idle' && (
+        <div className={cn('border-b px-4 py-2 text-xs font-bold', saveState === 'error' ? 'border-rose-100 bg-rose-50 text-rose-700' : 'border-slate-100 bg-slate-50 text-slate-600')}>
+          {saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? 'Saved' : 'Save failed'}
+        </div>
+      )}
       {!loading && rows.length === 0 && canEdit && (
         <div className="border-b border-amber-100 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-700">
           No checklist rows generated. <button onClick={regenerateWorkingPaper} className="ml-2 rounded bg-amber-600 px-3 py-1.5 text-xs text-white">Regenerate Working Paper</button>
@@ -3052,12 +3521,12 @@ function TableChecklistGrid({
         </div>
       ) : (
       <div className="max-h-[68vh] overflow-auto">
-        <table className="w-max min-w-full border-separate border-spacing-0 text-left">
+        <table className="w-max min-w-full border-separate border-spacing-0 border border-slate-200 text-left">
           <thead className="sticky top-0 z-10 bg-slate-100 text-slate-700">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <th key={header.id} style={{ width: header.getSize() }} className="relative max-w-[360px] whitespace-normal break-words border-b border-slate-200 px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                  <th key={header.id} style={{ width: header.getSize() }} className="relative max-w-[360px] whitespace-normal break-words border-b border-r border-slate-300 px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 last:border-r-0">
                     <div className="flex items-center gap-1">
                       <button type="button" onClick={() => moveColumn(header.column.id, -1)} className="rounded px-1 text-slate-400 hover:bg-white hover:text-slate-700">‹</button>
                       <button type="button" onClick={header.column.getToggleSortingHandler()} className="flex-1 text-left">
@@ -3077,15 +3546,15 @@ function TableChecklistGrid({
               </tr>
             ))}
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody>
             {loading ? (
               <tr><td colSpan={columns.length} className="px-4 py-10 text-center text-sm font-bold text-slate-500">Loading working paper...</td></tr>
             ) : table.getRowModel().rows.length === 0 ? (
               <tr><td colSpan={columns.length} className="px-4 py-10 text-center text-sm font-bold text-slate-500">No rows yet. Add a row or import Excel.</td></tr>
             ) : table.getRowModel().rows.map((row) => (
-              <tr key={row.id} className="hover:bg-slate-50">
+              <tr key={row.id} className="odd:bg-white even:bg-slate-50/70 hover:bg-blue-50/40">
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="border-b border-slate-100 px-3 py-3 align-top">{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+                  <td key={cell.id} className="border-b border-r border-slate-200 px-3 py-3 align-top last:border-r-0">{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
                 ))}
               </tr>
             ))}
@@ -3095,13 +3564,7 @@ function TableChecklistGrid({
       )}
       <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-xs font-bold text-slate-600">
         <span>{viewMode === 'question' ? `${questionRows.length} visible control(s)` : `${table.getFilteredRowModel().rows.length} row(s)`}</span>
-        {viewMode === 'table' && (
-          <div className="flex items-center gap-2">
-            <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">Previous</button>
-            <span>Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount() || 1}</span>
-            <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">Next</button>
-          </div>
-        )}
+        {viewMode === 'table' && <span>Continuous scroll</span>}
       </div>
       {repositoryPicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
@@ -4404,14 +4867,6 @@ export function ProjectDetailsPage() {
       {activeTab === 'Observations' && <ProjectObservationsTab project={project} />}
       {activeTab === 'Reports' && <ReportsTab project={project} reload={reload} />}
       {activeTab === 'Timeline' && <ReviewProgramTimelineTab project={project} users={users} reload={reload} />}
-
-      <div className="rounded-lg border border-slate-200 bg-white p-5">
-        <h3 className="font-extrabold text-slate-950">Control Rules</h3>
-        <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-slate-600 md:grid-cols-2">
-          <p><CheckCircle2 className="mr-2 inline h-4 w-4 text-emerald-600" /> Timeline progress is driven by Review Program milestones.</p>
-          <p><CheckCircle2 className="mr-2 inline h-4 w-4 text-emerald-600" /> Evidence should stay mapped to the relevant project area or control.</p>
-        </div>
-      </div>
 
       {showEdit && (
         <ProjectEditorModal

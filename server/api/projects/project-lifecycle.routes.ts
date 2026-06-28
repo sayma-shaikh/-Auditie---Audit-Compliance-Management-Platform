@@ -1375,7 +1375,7 @@ router.post('/project-areas/:areaId/table-rows', authenticateJWT, async (req: Au
   try {
     const area = await prisma.projectAreaAllocation.findUnique({ where: { id: req.params.areaId }, include: { project: true } });
     if (!area) return res.status(404).json({ message: 'Area allocation not found' });
-    if (!isMaker(area, req)) return res.status(403).json({ message: 'Only the assigned maker can edit this working paper.' });
+    if (!canWorkArea(area, req)) return res.status(403).json({ message: 'Only the assigned maker, audit manager, or admin can edit this working paper.' });
     if (area.workStatus === 'SUBMITTED' && area.reviewStatus !== 'REWORK_REQUIRED') return res.status(400).json({ message: 'Audit area is submitted and locked until rework is requested.' });
 
     const requestedTemplateId = req.body.templateId ? String(req.body.templateId) : null;
@@ -1410,7 +1410,7 @@ router.put('/table-rows/:rowId', authenticateJWT, async (req: AuthRequest, res) 
   try {
     const row = await prisma.checklistRow.findUnique({ where: { id: req.params.rowId }, include: { auditArea: { include: { project: true } } } });
     if (!row) return res.status(404).json({ message: 'Checklist row not found' });
-    if (!isMaker(row.auditArea, req)) return res.status(403).json({ message: 'Only the assigned maker can edit this working paper.' });
+    if (!canWorkArea(row.auditArea, req)) return res.status(403).json({ message: 'Only the assigned maker, audit manager, or admin can edit this working paper.' });
     if (row.auditArea.workStatus === 'SUBMITTED' && row.auditArea.reviewStatus !== 'REWORK_REQUIRED') return res.status(400).json({ message: 'Audit area is submitted and locked until rework is requested.' });
 
     const updated = await prisma.checklistRow.update({
@@ -1438,9 +1438,11 @@ router.delete('/table-rows/:rowId', authenticateJWT, async (req: AuthRequest, re
   try {
     const row = await prisma.checklistRow.findUnique({ where: { id: req.params.rowId }, include: { auditArea: { include: { project: true } } } });
     if (!row) return res.status(404).json({ message: 'Checklist row not found' });
-    if (!isMaker(row.auditArea, req)) return res.status(403).json({ message: 'Only the assigned maker can edit this working paper.' });
+    if (!canWorkArea(row.auditArea, req)) return res.status(403).json({ message: 'Only the assigned maker, audit manager, or admin can edit this working paper.' });
+    if (row.auditArea.workStatus === 'SUBMITTED' && row.auditArea.reviewStatus !== 'REWORK_REQUIRED') return res.status(400).json({ message: 'Audit area is submitted and locked until rework is requested.' });
     await prisma.checklistRow.delete({ where: { id: row.id } });
     await logAreaActivity({ projectId: row.auditArea.projectId, areaId: row.auditAreaId, req, actionType: 'TABLE_ROW_DELETED', message: `${req.user?.email || 'User'} deleted a working paper row from ${row.auditArea.areaName}.` });
+    await recalculateProject(row.auditArea.projectId);
     res.json({ ok: true });
   } catch (err) {
     console.error('Table row delete error:', err);
