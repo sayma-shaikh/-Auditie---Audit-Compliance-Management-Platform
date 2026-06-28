@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { createColumnHelper, flexRender, getCoreRowModel, getFilteredRowModel, getSortedRowModel, useReactTable, type ColumnOrderState, type ColumnSizingState, type SortingState } from '@tanstack/react-table';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -11,6 +12,7 @@ import {
   CheckCircle2,
   Circle,
   FileText,
+  Filter,
   Folder,
   Download,
   ExternalLink,
@@ -105,7 +107,7 @@ type ChecklistTemplateDef = {
 type TableChecklistRow = {
   id: string;
   rowData: Record<string, any>;
-  status: 'Pending' | 'Compliant' | 'Non-Compliant' | 'Not Applicable';
+  status: 'Pending' | 'Compliant' | 'Non-Compliant' | 'Observation' | 'Not Applicable';
   comments?: string | null;
   observation?: string | null;
   evidenceLink?: string | null;
@@ -123,6 +125,18 @@ type GridColumnDef = {
   options?: string[] | null;
   width: number;
 };
+
+type GridFilterOperator = 'contains' | 'notContains' | 'equals' | 'startsWith' | 'endsWith' | 'blank' | 'notBlank';
+type GridColumnFilter = {
+  search: string;
+  values: string[];
+  includeBlanks: boolean;
+  includeNonBlanks: boolean;
+  operator: GridFilterOperator;
+  text: string;
+};
+
+type FilterMenuPosition = { top: number; left: number };
 
 type AreaEvidenceRecord = EvidenceRecord & {
   source?: string;
@@ -188,7 +202,7 @@ type RepositoryPickerItem = {
 type ChecklistItem = {
   id: string;
   text: string;
-  status: 'Pending' | 'Compliant' | 'Non-Compliant' | 'Not Applicable';
+  status: 'Pending' | 'Compliant' | 'Non-Compliant' | 'Observation' | 'Not Applicable';
   observation: string;
   evidence: string[];
   auditorRemarks: string;
@@ -2597,9 +2611,9 @@ const SimpleEditableGridCell = React.memo(function SimpleEditableGridCell({
   options?: string[] | null;
   onSelect: () => void;
   onEdit: (initialValue?: string) => void;
-  onCommit: (value: string) => void;
+  onCommit: (value: string, immediate?: boolean) => void;
   onCancel: () => void;
-  onMove: (direction: 'up' | 'down' | 'left' | 'right' | 'next' | 'previous') => void;
+  onMove: (direction: 'up' | 'down' | 'left' | 'right' | 'next' | 'previous', edit?: boolean) => void;
 }) {
   const [draft, setDraft] = useState(value);
   const cellRef = useRef<HTMLDivElement | null>(null);
@@ -2627,11 +2641,77 @@ const SimpleEditableGridCell = React.memo(function SimpleEditableGridCell({
 
   const commit = (direction?: 'down' | 'next' | 'previous') => {
     if (cancelledRef.current) return;
-    onCommit(draft);
-    if (direction === 'down') onMove('down');
-    if (direction === 'next') onMove('next');
-    if (direction === 'previous') onMove('previous');
+    onCommit(draft, !!direction);
+    if (direction === 'down') onMove('down', true);
+    if (direction === 'next') onMove('next', true);
+    if (direction === 'previous') onMove('previous', true);
   };
+
+  const quickOptions = options?.length && options.every((option) => ['Yes', 'No', 'NA', 'N/A'].includes(option));
+
+  if (!editing && canEdit && (type === 'status' || quickOptions)) {
+    if (quickOptions) {
+      const normalizedValue = value === 'N/A' ? 'NA' : value;
+      return (
+        <div
+          ref={cellRef}
+          role="gridcell"
+          aria-label={label}
+          tabIndex={0}
+          className={cn(
+            'min-h-[78px] w-full rounded-sm border px-2 py-2 text-xs font-semibold outline-none',
+            selected ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-transparent bg-transparent',
+          )}
+          onClick={(event) => { event.currentTarget.focus(); onSelect(); }}
+          onKeyDown={(event) => {
+            const key = event.key.toLowerCase();
+            if (event.key === 'Escape') { event.preventDefault(); onCancel(); return; }
+            if (key === 'y' || key === 'n' || key === 'a') {
+              event.preventDefault();
+              onCommit(key === 'y' ? 'Yes' : key === 'n' ? 'No' : 'NA', true);
+            }
+          }}
+        >
+          <div className="flex min-h-[58px] flex-wrap items-start gap-1.5">
+            {['Yes', 'No', 'NA'].map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelect();
+                  onCommit(option, true);
+                }}
+                className={cn('rounded-full px-2 py-1 text-[10px] font-bold ring-1', normalizedValue === option ? 'bg-blue-600 text-white ring-blue-600' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50')}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <select
+        ref={(node) => { editorRef.current = node; }}
+        aria-label={label}
+        className="h-9 w-full rounded border border-slate-200 bg-white px-2 text-xs font-bold uppercase outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+        value={value || 'Pending'}
+        onClick={onSelect}
+        onChange={(event) => {
+          onSelect();
+          onCommit(event.currentTarget.value, true);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') { event.preventDefault(); onCancel(); }
+          if (event.key === 'Tab') { event.preventDefault(); onMove(event.shiftKey ? 'previous' : 'next'); }
+        }}
+      >
+        {(options || []).map((option) => <option key={option} value={option}>{option}</option>)}
+      </select>
+    );
+  }
 
   if (editing) {
     if (type === 'status' || options?.length) {
@@ -2642,7 +2722,7 @@ const SimpleEditableGridCell = React.memo(function SimpleEditableGridCell({
           value={draft || options?.[0] || ''}
           onChange={(event) => {
             setDraft(event.currentTarget.value);
-            onCommit(event.currentTarget.value);
+            onCommit(event.currentTarget.value, true);
             onMove('next');
           }}
           onBlur={() => commit()}
@@ -2726,6 +2806,204 @@ const SimpleEditableGridCell = React.memo(function SimpleEditableGridCell({
   );
 });
 
+const FilterPopup = React.memo(function FilterPopup({
+  column,
+  values,
+  appliedFilter,
+  position,
+  onApply,
+  onCancel,
+  onSort,
+}: {
+  column: GridColumnDef;
+  values: string[];
+  appliedFilter: GridColumnFilter;
+  position: FilterMenuPosition;
+  onApply: (filter: GridColumnFilter) => void;
+  onCancel: () => void;
+  onSort: (desc: boolean) => void;
+}) {
+  const popupRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [draft, setDraft] = useState<GridColumnFilter>({ ...appliedFilter, search: '' });
+  const [searchText, setSearchText] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [scrollTop, setScrollTop] = useState(0);
+  const [focusIndex, setFocusIndex] = useState(0);
+
+  useEffect(() => {
+    setDraft({ ...appliedFilter, search: '' });
+    setSearchText('');
+    setDebouncedSearch('');
+    setScrollTop(0);
+    setFocusIndex(0);
+  }, [appliedFilter, column.id]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(searchText), 150);
+    return () => window.clearTimeout(timer);
+  }, [searchText]);
+
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      if (!popupRef.current?.contains(event.target as Node)) onCancel();
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [onCancel]);
+
+  const filteredValues = useMemo(() => {
+    const term = debouncedSearch.trim().toLowerCase();
+    return term ? values.filter((value) => value.toLowerCase().includes(term)) : values;
+  }, [values, debouncedSearch]);
+
+  const selectedSet = useMemo(() => new Set(draft.values.length ? draft.values : values), [draft.values, values]);
+  const selectedVisibleCount = filteredValues.reduce((count, value) => count + (selectedSet.has(value) ? 1 : 0), 0);
+  const allVisibleSelected = filteredValues.length > 0 && selectedVisibleCount === filteredValues.length;
+  const rowHeight = 30;
+  const viewportHeight = 240;
+  const startIndex = Math.max(0, Math.floor(scrollTop / rowHeight) - 4);
+  const visibleCount = Math.ceil(viewportHeight / rowHeight) + 8;
+  const virtualValues = filteredValues.slice(startIndex, startIndex + visibleCount);
+  const normalizeValues = (next: Set<string>) => next.size === values.length ? [] : Array.from(next);
+
+  const toggleValue = (value: string) => {
+    setDraft((current) => {
+      const next = new Set<string>(current.values.length ? current.values : values);
+      next.has(value) ? next.delete(value) : next.add(value);
+      return { ...current, values: normalizeValues(next) };
+    });
+  };
+
+  const toggleAllVisible = () => {
+    setDraft((current) => {
+      const next = new Set<string>(current.values.length ? current.values : values);
+      if (allVisibleSelected) filteredValues.forEach((value) => next.delete(value));
+      else filteredValues.forEach((value) => next.add(value));
+      return { ...current, values: normalizeValues(next) };
+    });
+  };
+
+  const apply = () => onApply({ ...draft, search: '' });
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') { event.preventDefault(); onCancel(); return; }
+    if (event.key === 'Enter' && !(event.target instanceof HTMLTextAreaElement)) { event.preventDefault(); apply(); return; }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); setDraft((current) => ({ ...current, values: [] })); return; }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      const next = Math.min(filteredValues.length - 1, focusIndex + 1);
+      setFocusIndex(next);
+      listRef.current?.scrollTo({ top: Math.max(0, (next - 4) * rowHeight) });
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      const next = Math.max(0, focusIndex - 1);
+      setFocusIndex(next);
+      listRef.current?.scrollTo({ top: Math.max(0, (next - 4) * rowHeight) });
+      return;
+    }
+    if (event.key === ' ' && filteredValues[focusIndex]) {
+      event.preventDefault();
+      toggleValue(filteredValues[focusIndex]);
+    }
+  };
+
+  return createPortal(
+    <div
+      ref={popupRef}
+      className="fixed z-50 w-72 rounded-md border border-slate-200 bg-white p-3 text-xs font-semibold text-slate-700 shadow-xl"
+      style={{ top: position.top, left: position.left, maxHeight: 'min(420px, calc(100vh - 24px))' }}
+      onKeyDown={handleKeyDown}
+      onWheel={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-extrabold text-slate-900">{column.label}</p>
+        <button type="button" onClick={onCancel} className="rounded p-1 text-slate-400 hover:bg-slate-100"><X className="h-3.5 w-3.5" /></button>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <button type="button" onClick={() => onSort(false)} className="rounded border border-slate-200 px-2 py-1 text-left font-bold hover:bg-slate-50">Sort A to Z</button>
+        <button type="button" onClick={() => onSort(true)} className="rounded border border-slate-200 px-2 py-1 text-left font-bold hover:bg-slate-50">Sort Z to A</button>
+      </div>
+      <input
+        className="mt-2 h-9 w-full rounded border border-slate-200 px-2 text-xs outline-none focus:border-blue-400"
+        value={searchText}
+        onChange={(event) => setSearchText(event.currentTarget.value)}
+        onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault(); }}
+        placeholder={`Search ${column.label.toLowerCase()}...`}
+      />
+      <div className="mt-2 grid grid-cols-[1fr_1fr] gap-2">
+        <select
+          className="rounded border border-slate-200 px-2 py-1 text-xs outline-none"
+          value={draft.operator}
+          onChange={(event) => setDraft((current) => ({ ...current, operator: event.currentTarget.value as GridFilterOperator }))}
+        >
+          <option value="contains">Contains</option>
+          <option value="notContains">Does not contain</option>
+          <option value="equals">Equals</option>
+          <option value="startsWith">Starts with</option>
+          <option value="endsWith">Ends with</option>
+          <option value="blank">Is blank</option>
+          <option value="notBlank">Is not blank</option>
+        </select>
+        <input
+          className="rounded border border-slate-200 px-2 py-1 text-xs outline-none"
+          value={draft.text}
+          onChange={(event) => setDraft((current) => ({ ...current, text: event.currentTarget.value }))}
+          onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault(); }}
+          placeholder="Filter text"
+          disabled={draft.operator === 'blank' || draft.operator === 'notBlank'}
+        />
+      </div>
+      <div className="mt-2 flex gap-2">
+        <button type="button" onClick={() => setDraft((current) => ({ ...current, includeBlanks: true, includeNonBlanks: true, operator: current.operator === 'blank' || current.operator === 'notBlank' ? 'contains' : current.operator }))} className="rounded bg-slate-100 px-2 py-1 font-bold text-slate-700">All</button>
+        <button type="button" onClick={() => setDraft((current) => ({ ...current, operator: 'blank' }))} className="rounded bg-slate-100 px-2 py-1 font-bold text-slate-700">Blanks</button>
+        <button type="button" onClick={() => setDraft((current) => ({ ...current, operator: 'notBlank' }))} className="rounded bg-slate-100 px-2 py-1 font-bold text-slate-700">Non-blanks</button>
+      </div>
+      <div className="mt-2 rounded border border-slate-100">
+        <label className="flex cursor-pointer items-center gap-2 border-b border-slate-100 px-2 py-2 font-bold hover:bg-slate-50">
+          <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} />
+          Select All
+        </label>
+        <div
+          ref={listRef}
+          className="overflow-y-auto overscroll-contain"
+          style={{ height: Math.min(viewportHeight, Math.max(rowHeight, filteredValues.length * rowHeight)) }}
+          onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+          onWheel={(event) => event.stopPropagation()}
+        >
+          <div style={{ height: filteredValues.length * rowHeight, position: 'relative' }}>
+            {virtualValues.map((value, offset) => {
+              const index = startIndex + offset;
+              return (
+                <label
+                  key={value}
+                  className={cn('absolute left-0 right-0 flex cursor-pointer items-center gap-2 px-2 hover:bg-slate-50', focusIndex === index && 'bg-blue-50')}
+                  style={{ top: index * rowHeight, height: rowHeight }}
+                >
+                  <input type="checkbox" checked={selectedSet.has(value)} onChange={() => toggleValue(value)} />
+                  <span className="min-w-0 truncate">{value}</span>
+                </label>
+              );
+            })}
+            {!filteredValues.length && <p className="px-2 py-3 text-center text-slate-400">No values</p>}
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <button type="button" onClick={() => onApply({ ...appliedFilter, values: [], text: '', search: '', includeBlanks: true, includeNonBlanks: true, operator: 'contains' })} className="rounded bg-slate-100 px-3 py-1.5 font-bold text-slate-700">Clear</button>
+        <div className="flex gap-2">
+          <button type="button" onClick={onCancel} className="rounded bg-white px-3 py-1.5 font-bold text-slate-600 ring-1 ring-slate-200">Cancel</button>
+          <button type="button" onClick={apply} className="rounded bg-blue-600 px-3 py-1.5 font-bold text-white">Apply</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+});
+
 function TableChecklistGrid({
   area,
   canEdit,
@@ -2765,6 +3043,9 @@ function TableChecklistGrid({
   const [selectedCell, setSelectedCell] = useState<GridCellCoord | null>(null);
   const [editingCell, setEditingCell] = useState<GridCellCoord | null>(null);
   const [editInitialValue, setEditInitialValue] = useState<string | undefined>(undefined);
+  const [columnFilters, setColumnFilters] = useState<Record<string, GridColumnFilter>>({});
+  const [openFilterColumnId, setOpenFilterColumnId] = useState('');
+  const [filterMenuPosition, setFilterMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const saveTimersRef = useRef<Record<string, number>>({});
   const pendingSavePatchesRef = useRef<Record<string, Partial<TableChecklistRow>>>({});
   const importRef = useRef<HTMLInputElement | null>(null);
@@ -2786,6 +3067,27 @@ function TableChecklistGrid({
   useEffect(() => {
     loadTable().catch(console.error);
   }, [area.id]);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(`auditie-checklist-filters:${area.id}`);
+      setColumnFilters(stored ? JSON.parse(stored) : {});
+    } catch {
+      setColumnFilters({});
+    }
+    setOpenFilterColumnId('');
+    setFilterMenuPosition(null);
+    setSelectedCell(null);
+    setEditingCell(null);
+  }, [area.id]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(`auditie-checklist-filters:${area.id}`, JSON.stringify(columnFilters));
+    } catch {
+      // Local filter persistence is best-effort.
+    }
+  }, [area.id, columnFilters]);
 
   useEffect(() => () => {
     Object.values(saveTimersRef.current).forEach((timer) => window.clearTimeout(timer as number));
@@ -3093,7 +3395,9 @@ function TableChecklistGrid({
     }
   };
 
-  const gridColumnDefs: GridColumnDef[] = [
+  const statusOptions = ['Pending', 'Compliant', 'Non-Compliant', 'Observation', 'Not Applicable'];
+
+  const gridColumnDefs: GridColumnDef[] = useMemo(() => [
     ...(template?.columns || []).map((definition) => ({
       id: definition.columnKey,
       label: definition.columnName,
@@ -3103,11 +3407,11 @@ function TableChecklistGrid({
       options: definition.options,
       width: 280,
     })),
-    { id: 'status', label: 'Status', kind: 'field', field: 'status', type: 'status', options: ['Pending', 'Compliant', 'Non-Compliant', 'Not Applicable'], width: 180 },
+    { id: 'status', label: 'Status', kind: 'field', field: 'status', type: 'status', options: statusOptions, width: 180 },
     { id: 'comments', label: 'Comments', kind: 'field', field: 'comments', type: 'text', width: 240 },
     { id: 'observation', label: 'Observation', kind: 'field', field: 'observation', type: 'text', width: 260 },
     { id: 'evidenceLink', label: 'Repository Evidence Link', kind: 'field', field: 'evidenceLink', type: 'text', width: 260 },
-  ];
+  ], [template?.columns]);
 
   const sameCell = (a?: GridCellCoord | null, b?: GridCellCoord | null) => !!a && !!b && a.rowIndex === b.rowIndex && a.columnIndex === b.columnIndex;
 
@@ -3115,6 +3419,104 @@ function TableChecklistGrid({
     if (column.kind === 'rowData') return String(row.rowData?.[column.columnKey || ''] ?? '');
     return String((row as any)[column.field || ''] ?? '');
   };
+
+  const isAutoNumberColumn = (column: GridColumnDef) => /^(sr\.?\s*no\.?|srno|serial|s\.?\s*no\.?)$/i.test(column.label.trim()) || /^(srNo|serialNo)$/i.test(column.id);
+
+  const blankFilter = (): GridColumnFilter => ({
+    search: '',
+    values: [],
+    includeBlanks: true,
+    includeNonBlanks: true,
+    operator: 'contains',
+    text: '',
+  });
+
+  const filterForColumn = (columnId: string) => columnFilters[columnId] || blankFilter();
+
+  const isFilterActive = (filter?: GridColumnFilter) => {
+    if (!filter) return false;
+    return !!filter.text.trim()
+      || filter.values.length > 0
+      || !filter.includeBlanks
+      || !filter.includeNonBlanks
+      || filter.operator === 'blank'
+      || filter.operator === 'notBlank';
+  };
+
+  const textMatchesFilter = (value: string, filter: GridColumnFilter) => {
+    const raw = value || '';
+    const haystack = raw.toLowerCase();
+    const needle = filter.text.trim().toLowerCase();
+    const blank = !raw.trim();
+    if (filter.operator === 'blank') return blank;
+    if (filter.operator === 'notBlank') return !blank;
+    if (blank && !filter.includeBlanks) return false;
+    if (!blank && !filter.includeNonBlanks) return false;
+    if (filter.values.length && !filter.values.includes(raw.trim() || '(Blanks)')) return false;
+    if (!needle) return true;
+    if (filter.operator === 'notContains') return !haystack.includes(needle);
+    if (filter.operator === 'equals') return haystack === needle;
+    if (filter.operator === 'startsWith') return haystack.startsWith(needle);
+    if (filter.operator === 'endsWith') return haystack.endsWith(needle);
+    return haystack.includes(needle);
+  };
+
+  const uniqueColumnValues = (column: GridColumnDef) => {
+    const values = Array.from(new Set<string>(rows.map((row) => getCellValue(row, column).trim() || '(Blanks)')));
+    return values.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  };
+
+  const uniqueColumnValuesById = useMemo(() => {
+    const next: Record<string, string[]> = {};
+    gridColumnDefs.forEach((column) => {
+      next[column.id] = uniqueColumnValues(column);
+    });
+    return next;
+  }, [rows, gridColumnDefs]);
+
+  const yesNoNaColumnIds = useMemo(() => {
+    const allowed = new Set(['yes', 'no', 'na', 'n/a', '']);
+    return new Set(gridColumnDefs
+      .filter((column) => {
+        if (column.type === 'boolean') return true;
+        if (column.options?.length) return column.options.every((option) => allowed.has(option.trim().toLowerCase()));
+        if (column.kind !== 'rowData' || isAutoNumberColumn(column)) return false;
+        const values = rows.map((row) => getCellValue(row, column).trim().toLowerCase());
+        const nonBlank = values.filter(Boolean);
+        return nonBlank.length > 0 && nonBlank.every((value) => allowed.has(value));
+      })
+      .map((column) => column.id));
+  }, [gridColumnDefs, rows]);
+
+  const visibleGridRows = useMemo(() => {
+    const activeEntries = (Object.entries(columnFilters) as Array<[string, GridColumnFilter]>).filter(([, filter]) => isFilterActive(filter));
+    if (!activeEntries.length) return rows;
+    return rows.filter((row) => activeEntries.every(([columnId, filter]) => {
+      const column = gridColumnDefs.find((item) => item.id === columnId);
+      return column ? textMatchesFilter(getCellValue(row, column), filter) : true;
+    }));
+  }, [rows, columnFilters, gridColumnDefs]);
+
+  const clearColumnFilter = (columnId: string) => {
+    setColumnFilters((current) => {
+      const next = { ...current };
+      delete next[columnId];
+      return next;
+    });
+  };
+
+  const activeFilterChips = (Object.entries(columnFilters) as Array<[string, GridColumnFilter]>)
+    .filter(([, filter]) => isFilterActive(filter))
+    .map(([columnId, filter]) => {
+      const column = gridColumnDefs.find((item) => item.id === columnId);
+      const parts = [
+        filter.values.length ? filter.values.slice(0, 3).join(', ') + (filter.values.length > 3 ? ` +${filter.values.length - 3}` : '') : '',
+        filter.text.trim() ? `${filter.operator}: ${filter.text.trim()}` : '',
+        filter.operator === 'blank' ? 'Blanks' : '',
+        filter.operator === 'notBlank' ? 'Non-blanks' : '',
+      ].filter(Boolean);
+      return { columnId, label: column?.label || columnId, value: parts.join(' / ') || 'Filtered' };
+    });
 
   const patchForCell = (column: GridColumnDef, value: string): Partial<TableChecklistRow> => {
     if (column.kind === 'rowData') return { rowData: { [column.columnKey || column.id]: value } };
@@ -3127,48 +3529,58 @@ function TableChecklistGrid({
     rowData: { ...row.rowData, ...(patch.rowData || {}) },
   });
 
-  const moveCell = (from: GridCellCoord, direction: 'up' | 'down' | 'left' | 'right' | 'next' | 'previous') => {
-    if (!rows.length || !gridColumnDefs.length) return;
+  const moveCell = (from: GridCellCoord, direction: 'up' | 'down' | 'left' | 'right' | 'next' | 'previous', edit = false) => {
+    if (!visibleGridRows.length || !gridColumnDefs.length) return;
+    const currentRow = rows[from.rowIndex];
+    const visibleIndex = Math.max(0, visibleGridRows.findIndex((row) => row.id === currentRow?.id));
+    let nextVisibleIndex = visibleIndex;
     const next = { ...from };
-    if (direction === 'up') next.rowIndex -= 1;
-    if (direction === 'down') next.rowIndex += 1;
+    if (direction === 'up') nextVisibleIndex -= 1;
+    if (direction === 'down') nextVisibleIndex += 1;
     if (direction === 'left') next.columnIndex -= 1;
     if (direction === 'right') next.columnIndex += 1;
     if (direction === 'next') {
       next.columnIndex += 1;
       if (next.columnIndex >= gridColumnDefs.length) {
         next.columnIndex = 0;
-        next.rowIndex += 1;
+        nextVisibleIndex += 1;
       }
     }
     if (direction === 'previous') {
       next.columnIndex -= 1;
       if (next.columnIndex < 0) {
         next.columnIndex = gridColumnDefs.length - 1;
-        next.rowIndex -= 1;
+        nextVisibleIndex -= 1;
       }
     }
-    next.rowIndex = Math.max(0, Math.min(rows.length - 1, next.rowIndex));
+    nextVisibleIndex = Math.max(0, Math.min(visibleGridRows.length - 1, nextVisibleIndex));
+    const nextRow = visibleGridRows[nextVisibleIndex];
+    next.rowIndex = Math.max(0, rows.findIndex((row) => row.id === nextRow?.id));
     next.columnIndex = Math.max(0, Math.min(gridColumnDefs.length - 1, next.columnIndex));
     setEditingCell(null);
     setEditInitialValue(undefined);
     setSelectedCell(next);
+    if (edit && canEdit && !isAutoNumberColumn(gridColumnDefs[next.columnIndex])) {
+      window.setTimeout(() => beginEdit(next), 0);
+    }
   };
 
-  const applyCellValue = (rowIndex: number, columnIndex: number, value: string) => {
+  const applyCellValue = (rowIndex: number, columnIndex: number, value: string, immediate = false) => {
     const row = rows[rowIndex];
     const column = gridColumnDefs[columnIndex];
     if (!row || !column || !canEdit) return;
+    if (isAutoNumberColumn(column)) return;
     if (getCellValue(row, column) === value) return;
     const patch = patchForCell(column, value);
     setRows((current) => current.map((item) => item.id === row.id ? mergeRowPatch(item, patch) : item));
-    scheduleSaveRow(row, patch);
+    scheduleSaveRow(row, patch, immediate ? 0 : 500);
   };
 
   const beginEdit = (coord: GridCellCoord, initialValue?: string) => {
     const row = rows[coord.rowIndex];
     const column = gridColumnDefs[coord.columnIndex];
     if (!row || !column || !canEdit) return;
+    if (isAutoNumberColumn(column)) return;
     setSelectedCell(coord);
     setEditingCell(coord);
     setEditInitialValue(initialValue);
@@ -3177,7 +3589,10 @@ function TableChecklistGrid({
   const renderGridCell = (row: TableChecklistRow, rowIndex: number, column: GridColumnDef) => {
     const columnIndex = gridColumnDefs.findIndex((item) => item.id === column.id);
     if (columnIndex < 0) return null;
-    const coord = { rowIndex, columnIndex };
+    const sourceRowIndex = rows.findIndex((item) => item.id === row.id);
+    if (sourceRowIndex < 0) return null;
+    const coord = { rowIndex: sourceRowIndex, columnIndex };
+    const cellCanEdit = canEdit && !isAutoNumberColumn(column);
     return (
       <SimpleEditableGridCell
         value={getCellValue(row, column)}
@@ -3185,23 +3600,19 @@ function TableChecklistGrid({
         label={`${column.label} row ${rowIndex + 1}`}
         selected={sameCell(selectedCell, coord)}
         editing={sameCell(editingCell, coord)}
-        canEdit={canEdit}
+        canEdit={cellCanEdit}
         type={column.type}
-        options={column.options}
+        options={yesNoNaColumnIds.has(column.id) ? ['Yes', 'No', 'NA'] : column.options}
         onSelect={() => {
           setSelectedCell(coord);
-          if (column.id === 'status' && canEdit) {
-            beginEdit(coord);
-            return;
-          }
           if (!sameCell(editingCell, coord)) {
             setEditingCell(null);
             setEditInitialValue(undefined);
           }
         }}
         onEdit={(initialValue) => beginEdit(coord, initialValue)}
-        onCommit={(value) => {
-          applyCellValue(rowIndex, columnIndex, value);
+        onCommit={(value, immediate) => {
+          applyCellValue(sourceRowIndex, columnIndex, value, immediate);
           setEditingCell(null);
           setEditInitialValue(undefined);
         }}
@@ -3324,7 +3735,7 @@ function TableChecklistGrid({
   );
 
   const table = useReactTable({
-    data: rows,
+    data: visibleGridRows,
     columns,
     state: { globalFilter, sorting, columnOrder, columnSizing },
     onGlobalFilterChange: setGlobalFilter,
@@ -3352,6 +3763,7 @@ function TableChecklistGrid({
   const pendingCount = rows.filter((row) => row.status === 'Pending').length;
   const visibleRepositoryItems = repositoryItemsForCurrentFolder();
   const selectedRepositoryItem = flattenRepositoryItems(repositoryTree).find((item) => selectedRepositoryIds.includes(item.id)) || null;
+  const filteredRowCount = table.getFilteredRowModel().rows.length;
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white">
@@ -3366,12 +3778,53 @@ function TableChecklistGrid({
             <button type="button" onClick={() => setViewMode('question')} className={cn('rounded px-3 py-1.5 text-xs font-bold', viewMode === 'question' ? 'bg-blue-600 text-white' : 'text-slate-600')}>Question View</button>
           </div>
           {viewMode === 'table' && <input className={cn(inputClass, 'w-56')} value={globalFilter} onChange={(event) => setGlobalFilter(event.target.value)} placeholder="Search rows..." />}
+          {viewMode === 'table' && <span className="inline-flex items-center rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">Showing {filteredRowCount} of {rows.length} rows</span>}
           {canEdit && <button onClick={addRow} className="rounded bg-slate-900 px-3 py-2 text-xs font-bold text-white"><Plus className="inline h-3.5 w-3.5" /> Add Row</button>}
           {canEdit && <label className="cursor-pointer rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700"><Upload className="inline h-3.5 w-3.5" /> Import Excel<input ref={importRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(event) => importExcel(event.target.files)} /></label>}
           <button onClick={exportExcel} className="rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700"><Download className="inline h-3.5 w-3.5" /> Export Excel</button>
         </div>
       </div>
       {message && <div className="border-b border-slate-100 bg-blue-50 px-4 py-2 text-xs font-bold text-blue-700">{message}</div>}
+      {viewMode === 'table' && openFilterColumnId && (() => {
+        const gridColumn = gridColumnDefs.find((column) => column.id === openFilterColumnId);
+        return gridColumn && filterMenuPosition ? (
+          <FilterPopup
+            column={gridColumn}
+            values={uniqueColumnValuesById[gridColumn.id] || []}
+            appliedFilter={filterForColumn(gridColumn.id)}
+            position={filterMenuPosition}
+            onApply={(filter) => {
+              setColumnFilters((current) => {
+                const next = { ...current };
+                if (isFilterActive(filter)) next[gridColumn.id] = filter;
+                else delete next[gridColumn.id];
+                return next;
+              });
+              setOpenFilterColumnId('');
+              setFilterMenuPosition(null);
+            }}
+            onCancel={() => {
+              setOpenFilterColumnId('');
+              setFilterMenuPosition(null);
+            }}
+            onSort={(desc) => {
+              setSorting([{ id: gridColumn.id, desc }]);
+              setOpenFilterColumnId('');
+              setFilterMenuPosition(null);
+            }}
+          />
+        ) : null;
+      })()}
+      {viewMode === 'table' && activeFilterChips.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-600">
+          {activeFilterChips.map((chip) => (
+            <button key={chip.columnId} type="button" onClick={() => clearColumnFilter(chip.columnId)} className="rounded-full bg-white px-3 py-1 text-blue-700 ring-1 ring-blue-100">
+              {chip.label}: {chip.value} x
+            </button>
+          ))}
+          <button type="button" onClick={() => setColumnFilters({})} className="rounded px-2 py-1 text-slate-500 hover:bg-white">Clear All Filters</button>
+        </div>
+      )}
       {viewMode === 'table' && saveState !== 'idle' && (
         <div className={cn('border-b px-4 py-2 text-xs font-bold', saveState === 'error' ? 'border-rose-100 bg-rose-50 text-rose-700' : 'border-slate-100 bg-slate-50 text-slate-600')}>
           {saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? 'Saved' : 'Save failed'}
@@ -3395,7 +3848,7 @@ function TableChecklistGrid({
             <input className={inputClass} value={globalFilter} onChange={(event) => setGlobalFilter(event.target.value)} placeholder="Search controls..." />
             <select className={inputClass} value={questionStatusFilter} onChange={(event) => setQuestionStatusFilter(event.target.value)}>
               <option value="">All Statuses</option>
-              {['Pending', 'Compliant', 'Non-Compliant', 'Not Applicable'].map((status) => <option key={status} value={status}>{status}</option>)}
+              {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
             </select>
             <select className={inputClass} value={questionIsoFilter} onChange={(event) => setQuestionIsoFilter(event.target.value)}>
               <option value="">All ISO Clauses</option>
@@ -3459,7 +3912,7 @@ function TableChecklistGrid({
                       <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Auditor Input</p>
                       <div className="mt-2 flex items-center gap-2">
                           <select disabled={!canEdit} className={auditStatusSelectClass(questionRow.status)} value={questionRow.status} onChange={(event) => saveRow(questionRow, { status: event.target.value as TableChecklistRow['status'] }).catch(console.error)}>
-                            {['Pending', 'Compliant', 'Non-Compliant', 'Not Applicable'].map((status) => <option key={status} value={status}>{status}</option>)}
+                            {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
                           </select>
                           <div className="relative">
                             <button type="button" disabled={!canEdit} onClick={() => setOpenEvidenceMenuRowId(openEvidenceMenuRowId === questionRow.id ? '' : questionRow.id)} className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40" title="Attach evidence">
@@ -3528,6 +3981,33 @@ function TableChecklistGrid({
                 {headerGroup.headers.map((header) => (
                   <th key={header.id} style={{ width: header.getSize() }} className="relative max-w-[360px] whitespace-normal break-words border-b border-r border-slate-300 px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 last:border-r-0">
                     <div className="flex items-center gap-1">
+                      {gridColumnDefs.some((column) => column.id === header.column.id) && (
+                        <span className="relative">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              const rect = event.currentTarget.getBoundingClientRect();
+                              const width = 288;
+                              const height = 420;
+                              const left = Math.max(12, Math.min(window.innerWidth - width - 12, rect.left));
+                              const top = Math.max(12, Math.min(window.innerHeight - height - 12, rect.bottom + 8));
+                              if (openFilterColumnId === header.column.id) {
+                                setOpenFilterColumnId('');
+                                setFilterMenuPosition(null);
+                              } else {
+                                setFilterMenuPosition({ top, left });
+                                setOpenFilterColumnId(header.column.id);
+                              }
+                            }}
+                            className={cn('relative rounded p-1 hover:bg-white', isFilterActive(columnFilters[header.column.id]) ? 'text-blue-600' : 'text-slate-400 hover:text-slate-700')}
+                            title={`Filter ${String(header.column.columnDef.header || header.column.id)}`}
+                          >
+                            <Filter className="h-3.5 w-3.5" />
+                            {isFilterActive(columnFilters[header.column.id]) && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-blue-600" />}
+                          </button>
+                        </span>
+                      )}
                       <button type="button" onClick={() => moveColumn(header.column.id, -1)} className="rounded px-1 text-slate-400 hover:bg-white hover:text-slate-700">‹</button>
                       <button type="button" onClick={header.column.getToggleSortingHandler()} className="flex-1 text-left">
                         {flexRender(header.column.columnDef.header, header.getContext())}
@@ -3563,7 +4043,7 @@ function TableChecklistGrid({
       </div>
       )}
       <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-xs font-bold text-slate-600">
-        <span>{viewMode === 'question' ? `${questionRows.length} visible control(s)` : `${table.getFilteredRowModel().rows.length} row(s)`}</span>
+        <span>{viewMode === 'question' ? `${questionRows.length} visible control(s)` : `Showing ${filteredRowCount} of ${rows.length} rows`}</span>
         {viewMode === 'table' && <span>Continuous scroll</span>}
       </div>
       {repositoryPicker && (
