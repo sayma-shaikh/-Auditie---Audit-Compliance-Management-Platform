@@ -568,18 +568,18 @@ function useCurrentUser() {
   return user;
 }
 
-function PageContainer({ title, subtitle, children, actions }: { title: string; subtitle?: string; children: React.ReactNode; actions?: React.ReactNode }) {
+function PageContainer({ title, subtitle, children, actions, compact = false }: { title: string; subtitle?: string; children: React.ReactNode; actions?: React.ReactNode; compact?: boolean }) {
   return (
     <div className="flex-1 min-h-screen bg-slate-50 flex flex-col lg:ml-0">
-      <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between gap-4 px-8 shrink-0">
+      <header className={cn('bg-white border-b border-slate-200 flex items-center justify-between gap-4 shrink-0', compact ? 'h-12 px-4' : 'h-16 px-8')}>
         <div className="min-w-0">
           <h1 className="truncate text-base font-extrabold text-slate-950">{title}</h1>
           {subtitle && <p className="truncate text-[10px] font-bold uppercase tracking-widest text-slate-400">{subtitle}</p>}
         </div>
         {actions}
       </header>
-      <main className="flex-1 overflow-y-auto p-8">
-        <div className="mx-auto max-w-7xl space-y-6">{children}</div>
+      <main className={cn('flex-1 overflow-y-auto', compact ? 'p-3' : 'p-8')}>
+        <div className={cn('mx-auto', compact ? 'max-w-none space-y-2' : 'max-w-7xl space-y-6')}>{children}</div>
       </main>
     </div>
   );
@@ -1032,9 +1032,6 @@ function ProjectForm({
                           <option value="__default__">Default: {defaultReviewerName}</option>
                           {users.filter((item) => item.id !== area.makerUserId).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                         </select>
-                        <span className={cn('mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', area.reviewerUserId ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600')}>
-                          {area.reviewerUserId ? 'Override Reviewer' : 'Default Audit Manager'}
-                        </span>
                       </td>
                       <td className="px-3 py-2">
                         <select className={inputClass} value={area.checklistType} onChange={(e) => updateArea(index, 'checklistType', e.target.value)} disabled={!area.isCustom}>
@@ -1688,9 +1685,6 @@ function TeamAreaAllocationTab({ project, users, reload }: { project: ApiProject
                       <option value="__default__">Default: {userName(users, project.auditManagerId)}</option>
                       {users.filter((user) => user.id !== (area.makerUserId || area.assignedUserId)).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
                     </select>
-                    <span className={cn('mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', area.reviewerUserId ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600')}>
-                      {area.reviewerUserId ? 'Override Reviewer' : 'Default Audit Manager'}
-                    </span>
                   </td>
                   <td className="px-4 py-3">
                     <select className={inputClass} value={area.checklistType || 'QUESTION_CHECKLIST'} onChange={(e) => updateArea(area, { checklistType: e.target.value as ProjectAreaAllocation['checklistType'] })}>
@@ -2592,6 +2586,7 @@ const SimpleEditableGridCell = React.memo(function SimpleEditableGridCell({
   canEdit,
   type = 'text',
   options,
+  density = 'compact',
   onSelect,
   onEdit,
   onCommit,
@@ -2606,6 +2601,7 @@ const SimpleEditableGridCell = React.memo(function SimpleEditableGridCell({
   canEdit: boolean;
   type?: string;
   options?: string[] | null;
+  density?: 'compact' | 'comfortable';
   onSelect: () => void;
   onEdit: (initialValue?: string) => void;
   onCommit: (value: string, immediate?: boolean) => void;
@@ -2636,6 +2632,15 @@ const SimpleEditableGridCell = React.memo(function SimpleEditableGridCell({
     if (selected && !editing) cellRef.current?.focus();
   }, [selected, editing]);
 
+  const compact = density === 'compact';
+  const cellMinHeightClass = compact ? 'min-h-[40px]' : 'min-h-[78px]';
+  const quickOptionMinHeightClass = compact ? 'min-h-[44px]' : 'min-h-[78px]';
+  const quickOptionInnerClass = compact ? 'min-h-[26px] items-center' : 'min-h-[58px] items-start';
+  const editorMinHeightClass = compact ? 'min-h-[52px]' : 'min-h-[76px]';
+  const displayLineStyle = compact && type !== 'status'
+    ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' }
+    : undefined;
+
   const commit = (direction?: 'down' | 'next' | 'previous') => {
     if (cancelledRef.current) return;
     onCommit(draft, !!direction);
@@ -2656,7 +2661,8 @@ const SimpleEditableGridCell = React.memo(function SimpleEditableGridCell({
           aria-label={label}
           tabIndex={0}
           className={cn(
-            'min-h-[78px] w-full rounded-sm border px-2 py-2 text-xs font-semibold outline-none',
+            quickOptionMinHeightClass,
+            'w-full rounded-sm border px-2 py-1.5 text-xs font-semibold outline-none',
             selected ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-transparent bg-transparent',
           )}
           onClick={(event) => { event.currentTarget.focus(); onSelect(); }}
@@ -2669,7 +2675,7 @@ const SimpleEditableGridCell = React.memo(function SimpleEditableGridCell({
             }
           }}
         >
-          <div className="flex min-h-[58px] flex-wrap items-start gap-1.5">
+          <div className={cn('flex flex-wrap gap-1.5', quickOptionInnerClass)}>
             {['Yes', 'No', 'NA'].map((option) => (
               <button
                 key={option}
@@ -2755,7 +2761,7 @@ const SimpleEditableGridCell = React.memo(function SimpleEditableGridCell({
     return (
       <textarea
         ref={(node) => { editorRef.current = node; }}
-        className="min-h-[76px] w-full resize-none rounded border border-blue-400 bg-white px-2 py-1 text-xs font-semibold leading-relaxed text-slate-800 outline-none ring-2 ring-blue-100"
+        className={cn(editorMinHeightClass, 'w-full resize-none rounded border border-blue-400 bg-white px-2 py-1 text-xs font-semibold leading-relaxed text-slate-800 outline-none ring-2 ring-blue-100')}
         value={draft}
         onChange={(event) => setDraft(event.currentTarget.value)}
         onBlur={() => commit()}
@@ -2775,7 +2781,8 @@ const SimpleEditableGridCell = React.memo(function SimpleEditableGridCell({
       aria-label={label}
       tabIndex={0}
       className={cn(
-        'min-h-[78px] w-full rounded-sm border px-2 py-1 text-xs font-semibold leading-relaxed outline-none',
+        cellMinHeightClass,
+        'w-full rounded-sm border px-2 py-1 text-xs font-semibold leading-snug outline-none',
         selected ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-transparent bg-transparent',
         canEdit ? 'cursor-cell' : 'cursor-default',
       )}
@@ -2798,7 +2805,17 @@ const SimpleEditableGridCell = React.memo(function SimpleEditableGridCell({
         }
       }}
     >
-      <span className={cn('block min-h-[68px] whitespace-pre-wrap break-words', type === 'status' && 'inline-flex min-h-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase text-slate-700')}>{value || '-'}</span>
+      <span
+        className={cn(
+          'block whitespace-pre-wrap break-words',
+          compact ? 'min-h-[30px]' : 'min-h-[68px]',
+          type === 'status' && 'inline-flex min-h-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase text-slate-700',
+        )}
+        style={displayLineStyle}
+        title={compact && type !== 'status' ? value || '-' : undefined}
+      >
+        {value || '-'}
+      </span>
     </div>
   );
 });
@@ -3051,13 +3068,19 @@ const FilterPopup = React.memo(function FilterPopup({
 function TableChecklistGrid({
   area,
   canEdit,
+  canSubmitForReview,
+  submitting,
   onReload,
   onActivityRefresh,
+  onSubmitForReview,
 }: {
   area: ProjectAreaAllocation;
   canEdit: boolean;
+  canSubmitForReview: boolean;
+  submitting: boolean;
   onReload: () => Promise<void>;
   onActivityRefresh: () => Promise<void>;
+  onSubmitForReview: () => void;
 }) {
   const [template, setTemplate] = useState<ChecklistTemplateDef | null>(null);
   const [rows, setRows] = useState<TableChecklistRow[]>([]);
@@ -3091,6 +3114,7 @@ function TableChecklistGrid({
   const [columnFilters, setColumnFilters] = useState<Record<string, GridColumnFilter>>({});
   const [openFilterColumnId, setOpenFilterColumnId] = useState('');
   const [filterMenuPosition, setFilterMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [density, setDensity] = useState<'compact' | 'comfortable'>('compact');
   const [tableScrollTop, setTableScrollTop] = useState(0);
   const [tableViewportHeight, setTableViewportHeight] = useState(560);
   const saveTimersRef = useRef<Record<string, number>>({});
@@ -3638,6 +3662,7 @@ function TableChecklistGrid({
         canEdit={cellCanEdit}
         type={column.type}
         options={yesNoNaColumnIds.has(column.id) ? ['Yes', 'No', 'NA'] : column.options}
+        density={density}
         onSelect={() => {
           setSelectedCell(coord);
           if (!sameCell(editingCell, coord)) {
@@ -3670,7 +3695,7 @@ function TableChecklistGrid({
       header: definition.columnName,
       cell: ({ row, getValue }) => {
         const value = String(getValue() ?? '');
-        if (!canEdit) return <span className="block w-[280px] whitespace-pre-wrap break-words text-xs font-semibold leading-relaxed text-slate-700">{value || '-'}</span>;
+        if (!canEdit) return <span className="block w-[280px] overflow-hidden text-xs font-semibold leading-snug text-slate-700 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]" title={value || '-'}>{value || '-'}</span>;
         const gridColumn = gridColumnDefs.find((item) => item.id === definition.columnKey);
         return gridColumn ? renderGridCell(row.original, row.index, gridColumn) : null;
       },
@@ -3683,19 +3708,19 @@ function TableChecklistGrid({
       header: 'Comments',
       cell: ({ row, getValue }) => canEdit
         ? renderGridCell(row.original, row.index, gridColumnDefs.find((item) => item.id === 'comments')!)
-        : <span className="block w-[240px] whitespace-pre-wrap break-words text-xs text-slate-600">{String(getValue() || '-')}</span>,
+        : <span className="block w-[240px] overflow-hidden text-xs leading-snug text-slate-600 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]" title={String(getValue() || '-')}>{String(getValue() || '-')}</span>,
     }),
     tableChecklistColumnHelper.accessor('observation', {
       header: 'Observation',
       cell: ({ row, getValue }) => canEdit
         ? renderGridCell(row.original, row.index, gridColumnDefs.find((item) => item.id === 'observation')!)
-        : <span className="block w-[260px] whitespace-pre-wrap break-words text-xs text-slate-600">{String(getValue() || '-')}</span>,
+        : <span className="block w-[260px] overflow-hidden text-xs leading-snug text-slate-600 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]" title={String(getValue() || '-')}>{String(getValue() || '-')}</span>,
     }),
     tableChecklistColumnHelper.accessor('evidenceLink', {
       header: 'Repository Evidence Link',
       cell: ({ row, getValue }) => canEdit
         ? renderGridCell(row.original, row.index, gridColumnDefs.find((item) => item.id === 'evidenceLink')!)
-        : <span className="block w-[260px] whitespace-pre-wrap break-words text-xs text-blue-700">{String(getValue() || '-')}</span>,
+        : <span className="block w-[260px] truncate text-xs text-blue-700" title={String(getValue() || '-')}>{String(getValue() || '-')}</span>,
     }),
     tableChecklistColumnHelper.display({
       id: 'evidence',
@@ -3723,17 +3748,6 @@ function TableChecklistGrid({
       ) : null,
     }),
   ], [template?.columns, canEdit, gridColumnDefs, renderGridCell, uploadEvidence, createObservation, deleteRow]);
-
-  const tableColumnIds = useMemo(() => columns.map((column) => column.id || ''), [columns]);
-  const moveColumn = (columnId: string, direction: -1 | 1) => {
-    const order = columnOrder.length ? columnOrder : tableColumnIds;
-    const index = order.indexOf(columnId);
-    const target = index + direction;
-    if (index < 0 || target < 0 || target >= order.length) return;
-    const next = [...order];
-    [next[index], next[target]] = [next[target], next[index]];
-    setColumnOrder(next);
-  };
 
   const rowQuestionTitle = (row: TableChecklistRow, index: number) => {
     const data = row.rowData || {};
@@ -3785,7 +3799,7 @@ function TableChecklistGrid({
 
   const tableRows = table.getRowModel().rows;
   const shouldVirtualizeRows = tableRows.length > 200;
-  const virtualRowHeight = 112;
+  const virtualRowHeight = density === 'compact' ? 56 : 96;
   const virtualOverscan = 8;
   const virtualStartIndex = shouldVirtualizeRows ? Math.max(0, Math.floor(tableScrollTop / virtualRowHeight) - virtualOverscan) : 0;
   const virtualVisibleCount = shouldVirtualizeRows ? Math.ceil(tableViewportHeight / virtualRowHeight) + (virtualOverscan * 2) : tableRows.length;
@@ -3810,25 +3824,29 @@ function TableChecklistGrid({
   const visibleRepositoryItems = repositoryItemsForCurrentFolder();
   const selectedRepositoryItem = flattenRepositoryItems(repositoryTree).find((item) => selectedRepositoryIds.includes(item.id)) || null;
   const filteredRowCount = table.getFilteredRowModel().rows.length;
+  const completedRowsLabel = reviewedCount ? `${reviewedCount} of ${rows.length} completed` : `${filteredRowCount} rows`;
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white">
-      <div className="flex flex-col gap-3 border-b border-slate-200 p-4 xl:flex-row xl:items-center xl:justify-between">
-        <div>
-          <h3 className="font-extrabold text-slate-950">{area.areaName} Checklist</h3>
-          <p className="text-xs font-semibold text-slate-500">{template?.evidenceRequirement || 'The workbook worksheet is rendered as one checklist dataset.'}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <div className="flex rounded border border-slate-200 bg-slate-50 p-1">
-            <button type="button" onClick={() => setViewMode('table')} className={cn('rounded px-3 py-1.5 text-xs font-bold', viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-slate-600')}>Table View</button>
-            <button type="button" onClick={() => setViewMode('question')} className={cn('rounded px-3 py-1.5 text-xs font-bold', viewMode === 'question' ? 'bg-blue-600 text-white' : 'text-slate-600')}>Question View</button>
+    <div className="overflow-hidden border border-slate-200 bg-white">
+      <div className="sticky top-0 z-20 flex flex-wrap items-center gap-1.5 border-b border-slate-200 bg-white px-3 py-2 lg:flex-nowrap">
+          <div className="flex rounded border border-slate-200 bg-slate-50 p-0.5">
+            <button type="button" onClick={() => setViewMode('table')} className={cn('rounded px-2.5 py-1 text-[11px] font-bold', viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-slate-600')}>Table View</button>
+            <button type="button" onClick={() => setViewMode('question')} className={cn('rounded px-2.5 py-1 text-[11px] font-bold', viewMode === 'question' ? 'bg-blue-600 text-white' : 'text-slate-600')}>Question View</button>
           </div>
-          {viewMode === 'table' && <input className={cn(inputClass, 'w-56')} value={globalSearchDraft} onChange={(event) => setGlobalSearchDraft(event.target.value)} placeholder="Search rows..." />}
-          {viewMode === 'table' && <span className="inline-flex items-center rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">Showing {filteredRowCount} of {rows.length} rows</span>}
-          {canEdit && <button onClick={addRow} className="rounded bg-slate-900 px-3 py-2 text-xs font-bold text-white"><Plus className="inline h-3.5 w-3.5" /> Add Row</button>}
-          {canEdit && <label className="cursor-pointer rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700"><Upload className="inline h-3.5 w-3.5" /> Import Excel<input ref={importRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(event) => importExcel(event.target.files)} /></label>}
-          <button onClick={exportExcel} className="rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700"><Download className="inline h-3.5 w-3.5" /> Export Excel</button>
-        </div>
+          {viewMode === 'table' && <input className={cn(inputClass, 'h-8 w-52 px-2 py-1 text-xs')} value={globalSearchDraft} onChange={(event) => setGlobalSearchDraft(event.target.value)} placeholder="Search rows..." />}
+          {viewMode === 'table' && (
+            <div className="flex rounded border border-slate-200 bg-white p-0.5">
+              {(['compact', 'comfortable'] as const).map((mode) => (
+                <button key={mode} type="button" onClick={() => setDensity(mode)} className={cn('rounded px-2 py-1 text-[10px] font-bold capitalize', density === mode ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50')}>
+                  {mode}
+                </button>
+              ))}
+            </div>
+          )}
+          {canEdit && <button onClick={addRow} className="rounded bg-slate-900 px-2.5 py-1.5 text-xs font-bold text-white"><Plus className="inline h-3.5 w-3.5" /> Add Row</button>}
+          {canEdit && <label className="cursor-pointer rounded bg-slate-100 px-2.5 py-1.5 text-xs font-bold text-slate-700"><Upload className="inline h-3.5 w-3.5" /> Import<input ref={importRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(event) => importExcel(event.target.files)} /></label>}
+          <button onClick={exportExcel} className="rounded bg-slate-100 px-2.5 py-1.5 text-xs font-bold text-slate-700"><Download className="inline h-3.5 w-3.5" /> Export</button>
+          {canEdit && <button disabled={submitting || !canSubmitForReview} onClick={onSubmitForReview} className="ml-auto rounded bg-blue-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">{submitting ? 'Submitting...' : 'Submit for Review'}</button>}
       </div>
       {message && <div className="border-b border-slate-100 bg-blue-50 px-4 py-2 text-xs font-bold text-blue-700">{message}</div>}
       {viewMode === 'table' && openFilterColumnId && (() => {
@@ -4022,19 +4040,19 @@ function TableChecklistGrid({
       ) : (
       <div
         ref={tableScrollRef}
-        className="max-h-[68vh] overflow-auto"
+        className="h-[calc(100vh-292px)] min-h-[520px] overflow-auto"
         onScroll={(event) => {
           setTableScrollTop(event.currentTarget.scrollTop);
           setTableViewportHeight(event.currentTarget.clientHeight || 560);
         }}
       >
-        <table className="w-max min-w-full border-separate border-spacing-0 border border-slate-200 text-left">
-          <thead className="sticky top-0 z-10 bg-slate-100 text-slate-700">
+        <table className="w-max min-w-full border-separate border-spacing-0 text-left">
+          <thead className="sticky top-0 z-10 bg-slate-50 text-slate-700 shadow-[0_1px_0_0_rgba(203,213,225,1)]">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <th key={header.id} style={{ width: header.getSize() }} className="relative max-w-[360px] whitespace-normal break-words border-b border-r border-slate-300 px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 last:border-r-0">
-                    <div className="flex items-center gap-1">
+                {headerGroup.headers.map((header, headerIndex) => (
+                  <th key={header.id} style={{ width: header.getSize() }} className={cn('relative max-w-[360px] whitespace-normal break-words border-b border-r border-slate-200 px-2 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500 last:border-r-0', headerIndex === 0 && 'sticky left-0 z-20 bg-slate-50')}>
+                    <div className="flex items-center gap-1.5">
                       {gridColumnDefs.some((column) => column.id === header.column.id) && (
                         <span className="relative">
                           <button
@@ -4062,19 +4080,16 @@ function TableChecklistGrid({
                           </button>
                         </span>
                       )}
-                      <button type="button" onClick={() => moveColumn(header.column.id, -1)} className="rounded px-1 text-slate-400 hover:bg-white hover:text-slate-700">‹</button>
-                      <button type="button" onClick={header.column.getToggleSortingHandler()} className="flex-1 text-left">
+                      <button type="button" onClick={header.column.getToggleSortingHandler()} className="min-w-0 flex-1 truncate text-left">
                         {flexRender(header.column.columnDef.header, header.getContext())}
                         {header.column.getIsSorted() === 'asc' ? ' ↑' : header.column.getIsSorted() === 'desc' ? ' ↓' : ''}
                       </button>
-                      <button type="button" onClick={() => moveColumn(header.column.id, 1)} className="rounded px-1 text-slate-400 hover:bg-white hover:text-slate-700">›</button>
                     </div>
                     <div
                       onMouseDown={header.getResizeHandler()}
                       onTouchStart={header.getResizeHandler()}
                       className="absolute right-0 top-0 h-full w-1 cursor-col-resize select-none bg-transparent hover:bg-blue-300"
                     />
-                    {header.column.getIsSorted() === 'asc' ? ' ↑' : header.column.getIsSorted() === 'desc' ? ' ↓' : ''}
                   </th>
                 ))}
               </tr>
@@ -4094,8 +4109,8 @@ function TableChecklistGrid({
                 )}
                 {renderedTableRows.map((row) => (
                   <tr key={row.id} className="odd:bg-white even:bg-slate-50/70 hover:bg-blue-50/40">
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="border-b border-r border-slate-200 px-3 py-3 align-top last:border-r-0">{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+                    {row.getVisibleCells().map((cell, cellIndex) => (
+                      <td key={cell.id} className={cn('border-b border-r border-slate-100 align-top last:border-r-0', density === 'compact' ? 'px-2 py-1.5' : 'px-3 py-3', cellIndex === 0 && 'sticky left-0 z-[1] bg-white')}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
                     ))}
                   </tr>
                 ))}
@@ -4110,9 +4125,9 @@ function TableChecklistGrid({
         </table>
       </div>
       )}
-      <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-xs font-bold text-slate-600">
-        <span>{viewMode === 'question' ? `${questionRows.length} visible control(s)` : `Showing ${filteredRowCount} of ${rows.length} rows`}</span>
-        {viewMode === 'table' && <span>Continuous scroll</span>}
+      <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-bold text-slate-500">
+        <span>{viewMode === 'question' ? `${questionRows.length} controls` : completedRowsLabel}</span>
+        {viewMode === 'table' && filteredRowCount !== rows.length && <span>{filteredRowCount} filtered</span>}
       </div>
       {repositoryPicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
@@ -4744,51 +4759,80 @@ export function AuditAreaWorkspacePage() {
   if (loading) return <PageContainer title="Audit Area" subtitle="Loading workspace"><div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm font-bold text-slate-500">Loading audit area...</div></PageContainer>;
   if (!project || !area) return <PageContainer title="Audit Area" subtitle="Not found"><div className="rounded border border-rose-100 bg-rose-50 p-6 text-rose-700">{error || 'Audit area not found'}</div></PageContainer>;
 
+  const reviewerName = userName(users, effectiveReviewerId);
+  const makerName = userName(users, makerId);
+  const reviewLabel = area.reviewStatus || 'Not Reviewed';
+  const dueLabel = formatDate(area.dueDate);
+
   return (
     <PageContainer
       title={area.areaName}
       subtitle={`${project.projectName} - ${areaDisplayStatus(area)}`}
       actions={<button onClick={() => navigate(`/projects/${project.id}`)} className="rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">Project</button>}
+      compact
     >
-      <div className="rounded-lg border border-slate-200 bg-white p-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div>
+      <div className="rounded-md border border-slate-200 bg-white px-3 py-3">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-stretch xl:justify-between">
+          <div className="min-w-0 flex-1 py-1">
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Audit Area Workspace</p>
-            <h1 className="mt-1 text-2xl font-extrabold text-slate-950">{area.areaName}</h1>
-            <p className="text-sm font-semibold text-slate-500">{project.clientName} - {project.natureOfProject || project.frameworks}</p>
+            <h1 className="mt-0.5 truncate text-xl font-extrabold text-slate-950">{area.areaName}</h1>
+            <p className="truncate text-xs font-semibold text-slate-500">{project.projectName}</p>
           </div>
-          <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-5 xl:w-[760px]">
-            <Metric label="Maker" value={userName(users, makerId)} />
-            <Metric label="Reviewer" value={<span>{userName(users, effectiveReviewerId)} <span className={cn('ml-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide', area.reviewerUserId ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600')}>{area.reviewerUserId ? 'Assigned Reviewer' : 'Default Audit Manager'}</span></span>} />
-            <Metric label="Progress" value={`${progress.completed}/${progress.total}`} />
-            <Metric label="Due Date" value={formatDate(area.dueDate)} />
-            <Metric label="Review" value={area.reviewStatus || 'Not Reviewed'} />
+          <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3 lg:grid-cols-5 xl:w-[760px]">
+            <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Maker</p>
+              <p className="mt-1 truncate font-extrabold text-slate-950">{makerName}</p>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Reviewer</p>
+              <p className="mt-1 truncate font-extrabold text-slate-950">{reviewerName}</p>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Progress</p>
+              <p className="mt-1 truncate font-extrabold text-slate-950">{progress.completed}/{progress.total}</p>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Due Date</p>
+              <p className="mt-1 truncate font-extrabold text-slate-950">{dueLabel}</p>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Review</p>
+              <p className="mt-1 truncate font-extrabold text-slate-950">{reviewLabel}</p>
+            </div>
           </div>
         </div>
       </div>
 
-      {toast && <div className="rounded border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">{toast}</div>}
-      {error && <div className="rounded border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{error}</div>}
-      {canEdit && submitBlockReason && !error && <div className="rounded border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-700">{submitBlockReason}</div>}
+      {toast && <div className="border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">{toast}</div>}
+      {error && <div className="border border-rose-100 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">{error}</div>}
+      {canEdit && submitBlockReason && !error && <div className="border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">{submitBlockReason}</div>}
 
-      <div className="flex gap-2 overflow-x-auto border-b border-slate-200">
+      <div className="flex gap-1 overflow-x-auto border-b border-slate-200">
         {['Checklist', 'Evidence', 'Observations', 'Review', 'History'].map((tab) => (
-          <button key={tab} onClick={() => setActiveTab(tab)} className={cn('whitespace-nowrap border-b-2 px-3 py-3 text-sm font-bold', activeTab === tab ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-600 hover:text-slate-950')}>{tab}</button>
+          <button key={tab} onClick={() => setActiveTab(tab)} className={cn('whitespace-nowrap border-b-2 px-3 py-2 text-xs font-bold', activeTab === tab ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-600 hover:text-slate-950')}>{tab}</button>
         ))}
       </div>
 
       {activeTab === 'Checklist' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4">
-            <div>
-              <p className="text-sm font-extrabold text-slate-950">{isTableChecklist ? 'Working Paper Review Sheet' : `Checklist Progress: ${progress.completed}/${progress.total}`}</p>
-              <p className="text-xs font-semibold text-slate-500">{isTableChecklist ? 'Review records in a structured table with row evidence, comments, and status.' : 'Each audit point opens as a focused evidence card.'}</p>
-            </div>
-            {canEdit && <button disabled={submitting || !canSubmitForReview} onClick={submitForReview} className="rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60">{submitting ? 'Submitting...' : 'Submit For Review'}</button>}
-          </div>
+        <div className="space-y-2">
           {isTableChecklist && area ? (
-            <TableChecklistGrid area={area} canEdit={canEdit} onReload={reload} onActivityRefresh={fetchActivity} />
-          ) : checklist.map((item) => {
+            <TableChecklistGrid
+              area={area}
+              canEdit={canEdit}
+              canSubmitForReview={canSubmitForReview}
+              submitting={submitting}
+              onSubmitForReview={submitForReview}
+              onReload={reload}
+              onActivityRefresh={fetchActivity}
+            />
+          ) : (
+            <>
+              {canEdit && (
+                <div className="flex flex-wrap justify-end gap-1.5 border border-slate-200 bg-white px-3 py-2">
+                  <button disabled={submitting || !canSubmitForReview} onClick={submitForReview} className="rounded bg-blue-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">{submitting ? 'Submitting...' : 'Submit for Review'}</button>
+                </div>
+              )}
+              {checklist.map((item) => {
             const itemEvidence = evidence.filter((record) => record.checklistItemId === item.id);
             const expanded = openItemId === item.id;
             return (
@@ -4808,6 +4852,8 @@ export function AuditAreaWorkspacePage() {
               />
             );
           })}
+            </>
+          )}
           {attachItemId && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
               <div ref={attachPopupRef} className="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl">
@@ -5253,7 +5299,7 @@ export function MilestoneWorkspacePage() {
           <div className="border-b border-slate-200 p-4"><h3 className="font-extrabold text-slate-950">{milestone.workspaceType === 'EXECUTION_WORKSPACE' ? 'Execution Summary' : 'Assignment Summary'}</h3></div>
           <table className="min-w-full text-left text-sm">
             <thead className="bg-slate-50 text-[10px] uppercase tracking-widest text-slate-500"><tr><th className="px-3 py-3">Area</th><th className="px-3 py-3">Maker</th><th className="px-3 py-3">Reviewer</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Open</th></tr></thead>
-            <tbody className="divide-y divide-slate-100">{areas.map((area: ProjectAreaAllocation) => <tr key={area.id}><td className="px-3 py-3 font-bold">{area.areaName}</td><td className="px-3 py-3">{(area as any).maker?.name || userName(users, area.makerUserId)}</td><td className="px-3 py-3">{(area as any).reviewer?.name || userName(users, area.reviewerUserId) || 'Default Audit Manager'}</td><td className="px-3 py-3"><span className={statusPill(area.status)}>{area.status}</span></td><td className="px-3 py-3"><Link to={`/projects/${id}/areas/${area.id}`} className="rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white">Open</Link></td></tr>)}</tbody>
+            <tbody className="divide-y divide-slate-100">{areas.map((area: ProjectAreaAllocation) => <tr key={area.id}><td className="px-3 py-3 font-bold">{area.areaName}</td><td className="px-3 py-3">{(area as any).maker?.name || userName(users, area.makerUserId)}</td><td className="px-3 py-3">{(area as any).reviewer?.name || userName(users, area.reviewerUserId) || '-'}</td><td className="px-3 py-3"><span className={statusPill(area.status)}>{area.status}</span></td><td className="px-3 py-3"><Link to={`/projects/${id}/areas/${area.id}`} className="rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white">Open</Link></td></tr>)}</tbody>
           </table>
         </div>
       );
