@@ -114,6 +114,14 @@ type TableChecklistRow = {
   evidence?: Array<{ id: string; fileName: string; filePath: string; fileType?: string | null; uploadedAt?: string }>;
 };
 
+type ChecklistMetrics = {
+  controls: number;
+  reviewed: number;
+  compliant: number;
+  observations: number;
+  pending: number;
+};
+
 const tableChecklistColumnHelper = createColumnHelper<TableChecklistRow>();
 
 type GridCellCoord = { rowIndex: number; columnIndex: number };
@@ -621,6 +629,16 @@ function parseChecklist(snapshot?: string | ChecklistItem[] | null): ChecklistIt
   } catch {
     return [];
   }
+}
+
+function checklistMetricsFromItems(items: Array<{ status?: string | null; observation?: string | null }>): ChecklistMetrics {
+  return {
+    controls: items.length,
+    reviewed: items.filter((item) => item.status && item.status !== 'Pending').length,
+    compliant: items.filter((item) => item.status === 'Compliant').length,
+    observations: items.filter((item) => item.observation || item.status === 'Non-Compliant').length,
+    pending: items.filter((item) => !item.status || item.status === 'Pending').length,
+  };
 }
 
 function parseEvidence(records?: string | null): EvidenceRecord[] {
@@ -3073,6 +3091,7 @@ function TableChecklistGrid({
   onReload,
   onActivityRefresh,
   onSubmitForReview,
+  onMetricsChange,
 }: {
   area: ProjectAreaAllocation;
   canEdit: boolean;
@@ -3081,6 +3100,7 @@ function TableChecklistGrid({
   onReload: () => Promise<void>;
   onActivityRefresh: () => Promise<void>;
   onSubmitForReview: () => void;
+  onMetricsChange?: (metrics: ChecklistMetrics) => void;
 }) {
   const [template, setTemplate] = useState<ChecklistTemplateDef | null>(null);
   const [rows, setRows] = useState<TableChecklistRow[]>([]);
@@ -3825,6 +3845,17 @@ function TableChecklistGrid({
   const selectedRepositoryItem = flattenRepositoryItems(repositoryTree).find((item) => selectedRepositoryIds.includes(item.id)) || null;
   const filteredRowCount = table.getFilteredRowModel().rows.length;
   const completedRowsLabel = reviewedCount ? `${reviewedCount} of ${rows.length} completed` : `${filteredRowCount} rows`;
+  const compactQuestion = density === 'compact';
+
+  useEffect(() => {
+    onMetricsChange?.({
+      controls: rows.length,
+      reviewed: reviewedCount,
+      compliant: compliantCount,
+      observations: observationCount,
+      pending: pendingCount,
+    });
+  }, [rows.length, reviewedCount, compliantCount, observationCount, pendingCount, onMetricsChange]);
 
   return (
     <div className="overflow-hidden border border-slate-200 bg-white">
@@ -3833,16 +3864,14 @@ function TableChecklistGrid({
             <button type="button" onClick={() => setViewMode('table')} className={cn('rounded px-2.5 py-1 text-[11px] font-bold', viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-slate-600')}>Table View</button>
             <button type="button" onClick={() => setViewMode('question')} className={cn('rounded px-2.5 py-1 text-[11px] font-bold', viewMode === 'question' ? 'bg-blue-600 text-white' : 'text-slate-600')}>Question View</button>
           </div>
-          {viewMode === 'table' && <input className={cn(inputClass, 'h-8 w-52 px-2 py-1 text-xs')} value={globalSearchDraft} onChange={(event) => setGlobalSearchDraft(event.target.value)} placeholder="Search rows..." />}
-          {viewMode === 'table' && (
-            <div className="flex rounded border border-slate-200 bg-white p-0.5">
-              {(['compact', 'comfortable'] as const).map((mode) => (
-                <button key={mode} type="button" onClick={() => setDensity(mode)} className={cn('rounded px-2 py-1 text-[10px] font-bold capitalize', density === mode ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50')}>
-                  {mode}
-                </button>
-              ))}
-            </div>
-          )}
+          <input className={cn(inputClass, 'h-8 w-52 px-2 py-1 text-xs')} value={globalSearchDraft} onChange={(event) => setGlobalSearchDraft(event.target.value)} placeholder={viewMode === 'question' ? 'Search controls...' : 'Search rows...'} />
+          <div className="flex rounded border border-slate-200 bg-white p-0.5">
+            {(['compact', 'comfortable'] as const).map((mode) => (
+              <button key={mode} type="button" onClick={() => setDensity(mode)} className={cn('rounded px-2 py-1 text-[10px] font-bold capitalize', density === mode ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50')}>
+                {mode}
+              </button>
+            ))}
+          </div>
           {canEdit && <button onClick={addRow} className="rounded bg-slate-900 px-2.5 py-1.5 text-xs font-bold text-white"><Plus className="inline h-3.5 w-3.5" /> Add Row</button>}
           {canEdit && <label className="cursor-pointer rounded bg-slate-100 px-2.5 py-1.5 text-xs font-bold text-slate-700"><Upload className="inline h-3.5 w-3.5" /> Import<input ref={importRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(event) => importExcel(event.target.files)} /></label>}
           <button onClick={exportExcel} className="rounded bg-slate-100 px-2.5 py-1.5 text-xs font-bold text-slate-700"><Download className="inline h-3.5 w-3.5" /> Export</button>
@@ -3901,25 +3930,17 @@ function TableChecklistGrid({
         </div>
       )}
       {viewMode === 'question' && (
-        <div className="border-b border-slate-100 bg-white p-4">
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-            <Metric label="Controls" value={rows.length} />
-            <Metric label="Reviewed" value={reviewedCount} />
-            <Metric label="Compliant" value={compliantCount} />
-            <Metric label="Observations" value={observationCount} />
-            <Metric label="Pending" value={pendingCount} />
-          </div>
-          <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[1fr_180px_220px_220px]">
-            <input className={inputClass} value={globalSearchDraft} onChange={(event) => setGlobalSearchDraft(event.target.value)} placeholder="Search controls..." />
-            <select className={inputClass} value={questionStatusFilter} onChange={(event) => setQuestionStatusFilter(event.target.value)}>
+        <div className="border-b border-slate-100 bg-white px-3 py-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <select className={cn(inputClass, 'h-8 w-40 px-2 py-1 text-xs')} value={questionStatusFilter} onChange={(event) => setQuestionStatusFilter(event.target.value)}>
               <option value="">All Statuses</option>
               {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
             </select>
-            <select className={inputClass} value={questionIsoFilter} onChange={(event) => setQuestionIsoFilter(event.target.value)}>
+            <select className={cn(inputClass, 'h-8 w-52 px-2 py-1 text-xs')} value={questionIsoFilter} onChange={(event) => setQuestionIsoFilter(event.target.value)}>
               <option value="">All ISO Clauses</option>
               {questionIsoOptions.map((clause) => <option key={clause} value={clause}>{clause}</option>)}
             </select>
-            <select className={inputClass} value={questionSectionFilter} onChange={(event) => setQuestionSectionFilter(event.target.value)}>
+            <select className={cn(inputClass, 'h-8 w-56 px-2 py-1 text-xs')} value={questionSectionFilter} onChange={(event) => setQuestionSectionFilter(event.target.value)}>
               <option value="">All Review Sections</option>
               {questionSectionOptions.map((section) => <option key={section} value={section}>{section}</option>)}
             </select>
@@ -3927,7 +3948,7 @@ function TableChecklistGrid({
         </div>
       )}
       {viewMode === 'question' ? (
-        <div className="max-h-[68vh] overflow-auto">
+        <div className="h-[calc(100vh-292px)] min-h-[520px] overflow-auto">
           {loading ? (
             <p className="py-10 text-center text-sm font-bold text-slate-500">Loading checklist...</p>
           ) : questionRows.length === 0 ? (
@@ -3940,40 +3961,45 @@ function TableChecklistGrid({
               <button
                 type="button"
                 onClick={() => setExpandedQuestionRowId(expanded ? '' : questionRow.id)}
-                className="grid min-h-11 w-full grid-cols-[22px_1fr_auto_auto] items-center gap-3 px-4 py-2 text-left hover:bg-slate-50 md:grid-cols-[22px_1fr_260px_auto_auto]"
+                className={cn('grid w-full grid-cols-[18px_1fr_auto_auto] items-center gap-2 text-left hover:bg-slate-50 md:grid-cols-[18px_1fr_220px_auto_auto]', compactQuestion ? 'min-h-11 px-3 py-1.5' : 'min-h-14 px-4 py-2.5')}
               >
                 <span className="text-xs font-black text-slate-400">{expanded ? 'v' : '>'}</span>
-                <span className="min-w-0 truncate text-sm font-bold text-slate-900">{rowQuestionTitle(questionRow, index)}</span>
+                <span className={cn('min-w-0 truncate font-bold text-slate-900', compactQuestion ? 'text-xs' : 'text-sm')}>{rowQuestionTitle(questionRow, index)}</span>
                 <span className="hidden min-w-0 truncate text-xs font-semibold text-slate-500 md:block">{rowIsoClause(questionRow) || rowReviewSection(questionRow) || '-'}</span>
                 {auditStatusChip(questionRow.status)}
                 <span className="shrink-0 text-[10px] font-bold uppercase text-slate-500">{questionRow.evidence?.length || 0} Evidence</span>
               </button>
               {expanded && (
-                <div className="border-t border-slate-100 bg-slate-50 px-4 py-2.5">
-                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,7fr)_minmax(300px,3fr)]">
-                    <div className="rounded-md border border-slate-200 bg-white p-3">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Audit Requirement</p>
-                      <h4 className="mt-1 text-sm font-extrabold text-slate-950">{rowQuestionTitle(questionRow, index)}</h4>
-                      <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 md:grid-cols-2">
+                <div className={cn('border-t border-slate-100 bg-slate-50', compactQuestion ? 'px-3 py-2' : 'px-4 py-3')}>
+                  <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,7fr)_minmax(300px,3fr)]">
+                    <div className="rounded-md border border-slate-200 bg-white p-2.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Audit Requirement</p>
+                          <h4 className="mt-0.5 truncate text-sm font-extrabold text-slate-950">{rowQuestionTitle(questionRow, index)}</h4>
+                        </div>
+                        <span className="shrink-0">{auditStatusChip(questionRow.status)}</span>
+                      </div>
+                      <div className={cn('grid grid-cols-1 gap-x-4 gap-y-1.5 md:grid-cols-2', compactQuestion ? 'mt-2' : 'mt-3')}>
                         <div>
                           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Area</p>
-                          <p className="mt-0.5 text-sm font-semibold text-slate-700">{rowReviewSection(questionRow) || '-'}</p>
+                          <p className="mt-0.5 text-xs font-semibold text-slate-700">{rowReviewSection(questionRow) || '-'}</p>
                         </div>
                         <div>
                           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">ISO Reference</p>
-                          <p className="mt-0.5 text-sm font-semibold text-slate-700">{rowIsoClause(questionRow) || '-'}</p>
+                          <p className="mt-0.5 text-xs font-semibold text-slate-700">{rowIsoClause(questionRow) || '-'}</p>
                         </div>
                         <div className="md:col-span-2">
                           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Need To Check</p>
-                          <p className="mt-0.5 whitespace-pre-wrap text-sm font-semibold leading-snug text-slate-800">{rowNeedToCheck(questionRow, index)}</p>
+                          <p className="mt-0.5 whitespace-pre-wrap text-xs font-semibold leading-snug text-slate-800">{rowNeedToCheck(questionRow, index)}</p>
                         </div>
                         <div className="md:col-span-2">
                           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Evidence Expected</p>
-                          <p className="mt-0.5 whitespace-pre-wrap text-sm font-semibold leading-snug text-slate-700">{rowEvidenceExpected(questionRow) || '-'}</p>
+                          <p className="mt-0.5 whitespace-pre-wrap text-xs font-semibold leading-snug text-slate-700">{rowEvidenceExpected(questionRow) || '-'}</p>
                         </div>
                       </div>
                     </div>
-                    <div className="rounded-md border border-slate-200 bg-white p-3">
+                    <div className="rounded-md border border-slate-200 bg-white p-2.5">
                       <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Auditor Input</p>
                       <div className="mt-2 flex items-center gap-2">
                           <select disabled={!canEdit} className={auditStatusSelectClass(questionRow.status)} value={questionRow.status} onChange={(event) => saveRow(questionRow, { status: event.target.value as TableChecklistRow['status'] }).catch(console.error)}>
@@ -4020,15 +4046,15 @@ function TableChecklistGrid({
                             )}
                           </div>
                       </div>
-                      <div className="mt-3 space-y-2.5">
+                      <div className={cn('space-y-2', compactQuestion ? 'mt-2' : 'mt-3')}>
                         <div>
                           <div className="mb-1 flex items-center justify-between gap-2">
                             <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Observation</span>
                             {canEdit && <button onClick={() => createObservation(questionRow).catch(console.error)} className="rounded bg-blue-50 px-2.5 py-1.5 text-[10px] font-bold text-blue-700">Create Observation</button>}
                           </div>
-                          <textarea disabled={!canEdit} className={cn(textareaClass, 'min-h-20')} defaultValue={questionRow.observation || ''} onBlur={(event) => saveRow(questionRow, { observation: event.currentTarget.value }).catch(console.error)} />
+                          <textarea disabled={!canEdit} className={cn(textareaClass, compactQuestion ? 'min-h-14' : 'min-h-20')} defaultValue={questionRow.observation || ''} onBlur={(event) => saveRow(questionRow, { observation: event.currentTarget.value }).catch(console.error)} />
                         </div>
-                        <Field label="Comments"><textarea disabled={!canEdit} className={cn(textareaClass, 'min-h-16')} defaultValue={questionRow.comments || ''} onBlur={(event) => saveRow(questionRow, { comments: event.currentTarget.value }).catch(console.error)} /></Field>
+                        <Field label="Comments"><textarea disabled={!canEdit} className={cn(textareaClass, compactQuestion ? 'min-h-12' : 'min-h-16')} defaultValue={questionRow.comments || ''} onBlur={(event) => saveRow(questionRow, { comments: event.currentTarget.value }).catch(console.error)} /></Field>
                       </div>
                     </div>
                   </div>
@@ -4525,6 +4551,7 @@ export function AuditAreaWorkspacePage() {
   const [toast, setToast] = useState('');
   const [attachItemId, setAttachItemId] = useState<string | null>(null);
   const [repositoryFolderDraft, setRepositoryFolderDraft] = useState('');
+  const [tableChecklistMetrics, setTableChecklistMetrics] = useState<ChecklistMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const attachPopupRef = useRef<HTMLDivElement | null>(null);
@@ -4551,6 +4578,7 @@ export function AuditAreaWorkspacePage() {
 
   useEffect(() => {
     setLoading(true);
+    setTableChecklistMetrics(null);
     reload().catch((err) => setError(err.message || 'Unable to load audit area')).finally(() => setLoading(false));
   }, [id, areaId]);
 
@@ -4763,6 +4791,22 @@ export function AuditAreaWorkspacePage() {
   const makerName = userName(users, makerId);
   const reviewLabel = area.reviewStatus || 'Not Reviewed';
   const dueLabel = formatDate(area.dueDate);
+  const fallbackChecklistMetrics = isTableChecklist
+    ? checklistMetricsFromItems((area.workpaperKind === 'AREA_GROUP' ? (area.workingPapers || []).flatMap((paper) => paper.checklistRows || []) : area.checklistRows || []))
+    : checklistMetricsFromItems(checklist);
+  const checklistMetrics = tableChecklistMetrics || fallbackChecklistMetrics;
+  const summaryCards = [
+    ['Maker', makerName],
+    ['Reviewer', reviewerName],
+    ['Progress', `${progress.completed}/${progress.total}`],
+    ['Due Date', dueLabel],
+    ['Review', reviewLabel],
+    ['Controls', checklistMetrics.controls],
+    ['Reviewed', checklistMetrics.reviewed],
+    ['Compliant', checklistMetrics.compliant],
+    ['Observations', checklistMetrics.observations],
+    ['Pending', checklistMetrics.pending],
+  ] as const;
 
   return (
     <PageContainer
@@ -4778,27 +4822,13 @@ export function AuditAreaWorkspacePage() {
             <h1 className="mt-0.5 truncate text-xl font-extrabold text-slate-950">{area.areaName}</h1>
             <p className="truncate text-xs font-semibold text-slate-500">{project.projectName}</p>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3 lg:grid-cols-5 xl:w-[760px]">
-            <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Maker</p>
-              <p className="mt-1 truncate font-extrabold text-slate-950">{makerName}</p>
-            </div>
-            <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Reviewer</p>
-              <p className="mt-1 truncate font-extrabold text-slate-950">{reviewerName}</p>
-            </div>
-            <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Progress</p>
-              <p className="mt-1 truncate font-extrabold text-slate-950">{progress.completed}/{progress.total}</p>
-            </div>
-            <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Due Date</p>
-              <p className="mt-1 truncate font-extrabold text-slate-950">{dueLabel}</p>
-            </div>
-            <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Review</p>
-              <p className="mt-1 truncate font-extrabold text-slate-950">{reviewLabel}</p>
-            </div>
+          <div className="grid flex-[2] grid-cols-2 gap-2 text-xs sm:grid-cols-3 lg:grid-cols-5 2xl:grid-cols-10">
+            {summaryCards.map(([label, value]) => (
+              <div key={label} className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</p>
+                <p className="mt-1 truncate font-extrabold text-slate-950">{value}</p>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -4824,6 +4854,7 @@ export function AuditAreaWorkspacePage() {
               onSubmitForReview={submitForReview}
               onReload={reload}
               onActivityRefresh={fetchActivity}
+              onMetricsChange={setTableChecklistMetrics}
             />
           ) : (
             <>
