@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createColumnHelper, flexRender, getCoreRowModel, getFilteredRowModel, getSortedRowModel, useReactTable, type ColumnOrderState, type ColumnSizingState, type SortingState } from '@tanstack/react-table';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -114,6 +114,8 @@ type TableChecklistRow = {
   evidence?: Array<{ id: string; fileName: string; filePath: string; fileType?: string | null; uploadedAt?: string }>;
 };
 
+const tableChecklistColumnHelper = createColumnHelper<TableChecklistRow>();
+
 type GridCellCoord = { rowIndex: number; columnIndex: number };
 type GridColumnDef = {
   id: string;
@@ -126,15 +128,10 @@ type GridColumnDef = {
   width: number;
 };
 
-type GridFilterOperator = 'contains' | 'notContains' | 'equals' | 'startsWith' | 'endsWith' | 'blank' | 'notBlank';
 type GridColumnFilter = {
-  search: string;
   values: string[];
-  includeBlanks: boolean;
-  includeNonBlanks: boolean;
-  operator: GridFilterOperator;
-  text: string;
 };
+type GridFilterOption = { key: string; label: string; sortLabel: string };
 
 type FilterMenuPosition = { top: number; left: number };
 
@@ -2806,38 +2803,107 @@ const SimpleEditableGridCell = React.memo(function SimpleEditableGridCell({
   );
 });
 
+const FILTER_BLANK_KEY = '__auditie_blank__';
+
+const normalizeFilterOption = (value: unknown): GridFilterOption => {
+  const raw = value == null ? '' : String(value);
+  const trimmed = raw.trim();
+  if (!trimmed) return { key: FILTER_BLANK_KEY, label: 'Blank', sortLabel: '' };
+  return { key: trimmed, label: trimmed, sortLabel: trimmed };
+};
+
+const normalizeStoredFilter = (value: unknown): GridColumnFilter | null => {
+  if (!value || typeof value !== 'object') return null;
+  const maybeValues = (value as { values?: unknown }).values;
+  if (!Array.isArray(maybeValues)) return null;
+  return { values: maybeValues.map((item) => normalizeFilterOption(item).key) };
+};
+
+const normalizeStoredColumnFilters = (value: unknown): Record<string, GridColumnFilter> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.entries(value as Record<string, unknown>).reduce<Record<string, GridColumnFilter>>((next, [columnId, filter]) => {
+    const normalized = normalizeStoredFilter(filter);
+    if (normalized) next[columnId] = normalized;
+    return next;
+  }, {});
+};
+
+const FilterOptionRow = React.memo(function FilterOptionRow({
+  option,
+  checked,
+  focused,
+  top,
+  height,
+  onToggle,
+}: {
+  option: GridFilterOption;
+  checked: boolean;
+  focused: boolean;
+  top: number;
+  height: number;
+  onToggle: (key: string) => void;
+}) {
+  const handleChange = useCallback(() => onToggle(option.key), [onToggle, option.key]);
+  return (
+    <label
+      className={cn('absolute left-0 right-0 flex cursor-pointer items-center gap-2 px-2 hover:bg-slate-50', focused && 'bg-blue-50')}
+      style={{ top, height }}
+    >
+      <input type="checkbox" checked={checked} onChange={handleChange} />
+      <span className="min-w-0 truncate">{option.label}</span>
+    </label>
+  );
+});
+
 const FilterPopup = React.memo(function FilterPopup({
   column,
-  values,
+  options,
   appliedFilter,
   position,
   onApply,
+  onClear,
   onCancel,
-  onSort,
 }: {
   column: GridColumnDef;
-  values: string[];
-  appliedFilter: GridColumnFilter;
+  options: GridFilterOption[];
+  appliedFilter: GridColumnFilter | null;
   position: FilterMenuPosition;
-  onApply: (filter: GridColumnFilter) => void;
+  onApply: (filter: GridColumnFilter | null, sortDesc: boolean | null) => void;
+  onClear: () => void;
   onCancel: () => void;
-  onSort: (desc: boolean) => void;
 }) {
   const popupRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
-  const [draft, setDraft] = useState<GridColumnFilter>({ ...appliedFilter, search: '' });
+  const optionKeys = useMemo(() => options.map((option) => option.key), [options]);
+  const optionKeySet = useMemo(() => new Set(optionKeys), [optionKeys]);
+  const selectedRef = useRef<Set<string>>(new Set(appliedFilter
+    ? appliedFilter.values.map((value) => normalizeFilterOption(value).key).filter((key) => optionKeySet.has(key))
+    : optionKeys));
   const [searchText, setSearchText] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [scrollTop, setScrollTop] = useState(0);
   const [focusIndex, setFocusIndex] = useState(0);
+  const [selectionVersion, setSelectionVersion] = useState(0);
+  const [draftSortDesc, setDraftSortDesc] = useState<boolean | null>(null);
 
   useEffect(() => {
-    setDraft({ ...appliedFilter, search: '' });
+    const next = new Set<string>();
+    if (appliedFilter) {
+      appliedFilter.values.forEach((value) => {
+        const key = normalizeFilterOption(value).key;
+        if (optionKeySet.has(key)) next.add(key);
+      });
+    } else {
+      optionKeys.forEach((key) => next.add(key));
+    }
+    selectedRef.current = next;
     setSearchText('');
     setDebouncedSearch('');
     setScrollTop(0);
     setFocusIndex(0);
-  }, [appliedFilter, column.id]);
+    setDraftSortDesc(null);
+    setSelectionVersion((version) => version + 1);
+  }, [appliedFilter, column.id, optionKeys, optionKeySet]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(searchText), 150);
@@ -2852,47 +2918,50 @@ const FilterPopup = React.memo(function FilterPopup({
     return () => document.removeEventListener('mousedown', onPointerDown);
   }, [onCancel]);
 
-  const filteredValues = useMemo(() => {
+  const filteredOptions = useMemo(() => {
     const term = debouncedSearch.trim().toLowerCase();
-    return term ? values.filter((value) => value.toLowerCase().includes(term)) : values;
-  }, [values, debouncedSearch]);
+    return term ? options.filter((option) => option.label.toLowerCase().includes(term)) : options;
+  }, [options, debouncedSearch]);
 
-  const selectedSet = useMemo(() => new Set(draft.values.length ? draft.values : values), [draft.values, values]);
-  const selectedVisibleCount = filteredValues.reduce((count, value) => count + (selectedSet.has(value) ? 1 : 0), 0);
-  const allVisibleSelected = filteredValues.length > 0 && selectedVisibleCount === filteredValues.length;
+  const selectedVisibleCount = useMemo(
+    () => filteredOptions.reduce((count, option) => count + (selectedRef.current.has(option.key) ? 1 : 0), 0),
+    [filteredOptions, selectionVersion],
+  );
+  const allVisibleSelected = filteredOptions.length > 0 && selectedVisibleCount === filteredOptions.length;
   const rowHeight = 30;
   const viewportHeight = 240;
   const startIndex = Math.max(0, Math.floor(scrollTop / rowHeight) - 4);
   const visibleCount = Math.ceil(viewportHeight / rowHeight) + 8;
-  const virtualValues = filteredValues.slice(startIndex, startIndex + visibleCount);
-  const normalizeValues = (next: Set<string>) => next.size === values.length ? [] : Array.from(next);
+  const virtualOptions = useMemo(() => filteredOptions.slice(startIndex, startIndex + visibleCount), [filteredOptions, startIndex, visibleCount]);
 
-  const toggleValue = (value: string) => {
-    setDraft((current) => {
-      const next = new Set<string>(current.values.length ? current.values : values);
-      next.has(value) ? next.delete(value) : next.add(value);
-      return { ...current, values: normalizeValues(next) };
-    });
-  };
+  const rerenderSelection = useCallback(() => setSelectionVersion((version) => version + 1), []);
 
-  const toggleAllVisible = () => {
-    setDraft((current) => {
-      const next = new Set<string>(current.values.length ? current.values : values);
-      if (allVisibleSelected) filteredValues.forEach((value) => next.delete(value));
-      else filteredValues.forEach((value) => next.add(value));
-      return { ...current, values: normalizeValues(next) };
-    });
-  };
+  const toggleValue = useCallback((key: string) => {
+    const selected = selectedRef.current;
+    if (selected.has(key)) selected.delete(key);
+    else selected.add(key);
+    rerenderSelection();
+  }, [rerenderSelection]);
 
-  const apply = () => onApply({ ...draft, search: '' });
+  const toggleAllVisible = useCallback(() => {
+    const selected = selectedRef.current;
+    if (allVisibleSelected) filteredOptions.forEach((option) => selected.delete(option.key));
+    else filteredOptions.forEach((option) => selected.add(option.key));
+    rerenderSelection();
+  }, [allVisibleSelected, filteredOptions, rerenderSelection]);
+
+  const apply = useCallback(() => {
+    const selectedValues = optionKeys.filter((key) => selectedRef.current.has(key));
+    onApply(selectedValues.length === optionKeys.length ? null : { values: selectedValues }, draftSortDesc);
+  }, [draftSortDesc, onApply, optionKeys]);
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') { event.preventDefault(); onCancel(); return; }
     if (event.key === 'Enter' && !(event.target instanceof HTMLTextAreaElement)) { event.preventDefault(); apply(); return; }
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); setDraft((current) => ({ ...current, values: [] })); return; }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); optionKeys.forEach((key) => selectedRef.current.add(key)); rerenderSelection(); return; }
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      const next = Math.min(filteredValues.length - 1, focusIndex + 1);
+      const next = Math.min(filteredOptions.length - 1, focusIndex + 1);
       setFocusIndex(next);
       listRef.current?.scrollTo({ top: Math.max(0, (next - 4) * rowHeight) });
       return;
@@ -2904,9 +2973,9 @@ const FilterPopup = React.memo(function FilterPopup({
       listRef.current?.scrollTo({ top: Math.max(0, (next - 4) * rowHeight) });
       return;
     }
-    if (event.key === ' ' && filteredValues[focusIndex]) {
+    if (event.key === ' ' && filteredOptions[focusIndex]) {
       event.preventDefault();
-      toggleValue(filteredValues[focusIndex]);
+      toggleValue(filteredOptions[focusIndex].key);
     }
   };
 
@@ -2917,6 +2986,7 @@ const FilterPopup = React.memo(function FilterPopup({
       style={{ top: position.top, left: position.left, maxHeight: 'min(420px, calc(100vh - 24px))' }}
       onKeyDown={handleKeyDown}
       onWheel={(event) => event.stopPropagation()}
+      onWheelCapture={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}
     >
       <div className="flex items-center justify-between gap-2">
@@ -2924,8 +2994,8 @@ const FilterPopup = React.memo(function FilterPopup({
         <button type="button" onClick={onCancel} className="rounded p-1 text-slate-400 hover:bg-slate-100"><X className="h-3.5 w-3.5" /></button>
       </div>
       <div className="mt-2 grid grid-cols-2 gap-2">
-        <button type="button" onClick={() => onSort(false)} className="rounded border border-slate-200 px-2 py-1 text-left font-bold hover:bg-slate-50">Sort A to Z</button>
-        <button type="button" onClick={() => onSort(true)} className="rounded border border-slate-200 px-2 py-1 text-left font-bold hover:bg-slate-50">Sort Z to A</button>
+        <button type="button" onClick={() => setDraftSortDesc(false)} className={cn('rounded border border-slate-200 px-2 py-1 text-left font-bold hover:bg-slate-50', draftSortDesc === false && 'border-blue-300 bg-blue-50 text-blue-700')}>Sort A to Z</button>
+        <button type="button" onClick={() => setDraftSortDesc(true)} className={cn('rounded border border-slate-200 px-2 py-1 text-left font-bold hover:bg-slate-50', draftSortDesc === true && 'border-blue-300 bg-blue-50 text-blue-700')}>Sort Z to A</button>
       </div>
       <input
         className="mt-2 h-9 w-full rounded border border-slate-200 px-2 text-xs outline-none focus:border-blue-400"
@@ -2934,34 +3004,6 @@ const FilterPopup = React.memo(function FilterPopup({
         onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault(); }}
         placeholder={`Search ${column.label.toLowerCase()}...`}
       />
-      <div className="mt-2 grid grid-cols-[1fr_1fr] gap-2">
-        <select
-          className="rounded border border-slate-200 px-2 py-1 text-xs outline-none"
-          value={draft.operator}
-          onChange={(event) => setDraft((current) => ({ ...current, operator: event.currentTarget.value as GridFilterOperator }))}
-        >
-          <option value="contains">Contains</option>
-          <option value="notContains">Does not contain</option>
-          <option value="equals">Equals</option>
-          <option value="startsWith">Starts with</option>
-          <option value="endsWith">Ends with</option>
-          <option value="blank">Is blank</option>
-          <option value="notBlank">Is not blank</option>
-        </select>
-        <input
-          className="rounded border border-slate-200 px-2 py-1 text-xs outline-none"
-          value={draft.text}
-          onChange={(event) => setDraft((current) => ({ ...current, text: event.currentTarget.value }))}
-          onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault(); }}
-          placeholder="Filter text"
-          disabled={draft.operator === 'blank' || draft.operator === 'notBlank'}
-        />
-      </div>
-      <div className="mt-2 flex gap-2">
-        <button type="button" onClick={() => setDraft((current) => ({ ...current, includeBlanks: true, includeNonBlanks: true, operator: current.operator === 'blank' || current.operator === 'notBlank' ? 'contains' : current.operator }))} className="rounded bg-slate-100 px-2 py-1 font-bold text-slate-700">All</button>
-        <button type="button" onClick={() => setDraft((current) => ({ ...current, operator: 'blank' }))} className="rounded bg-slate-100 px-2 py-1 font-bold text-slate-700">Blanks</button>
-        <button type="button" onClick={() => setDraft((current) => ({ ...current, operator: 'notBlank' }))} className="rounded bg-slate-100 px-2 py-1 font-bold text-slate-700">Non-blanks</button>
-      </div>
       <div className="mt-2 rounded border border-slate-100">
         <label className="flex cursor-pointer items-center gap-2 border-b border-slate-100 px-2 py-2 font-bold hover:bg-slate-50">
           <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} />
@@ -2970,30 +3012,32 @@ const FilterPopup = React.memo(function FilterPopup({
         <div
           ref={listRef}
           className="overflow-y-auto overscroll-contain"
-          style={{ height: Math.min(viewportHeight, Math.max(rowHeight, filteredValues.length * rowHeight)) }}
+          style={{ height: Math.min(viewportHeight, Math.max(rowHeight, filteredOptions.length * rowHeight)) }}
           onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
           onWheel={(event) => event.stopPropagation()}
+          onWheelCapture={(event) => event.stopPropagation()}
         >
-          <div style={{ height: filteredValues.length * rowHeight, position: 'relative' }}>
-            {virtualValues.map((value, offset) => {
+          <div style={{ height: filteredOptions.length * rowHeight, position: 'relative' }}>
+            {virtualOptions.map((option, offset) => {
               const index = startIndex + offset;
               return (
-                <label
-                  key={value}
-                  className={cn('absolute left-0 right-0 flex cursor-pointer items-center gap-2 px-2 hover:bg-slate-50', focusIndex === index && 'bg-blue-50')}
-                  style={{ top: index * rowHeight, height: rowHeight }}
-                >
-                  <input type="checkbox" checked={selectedSet.has(value)} onChange={() => toggleValue(value)} />
-                  <span className="min-w-0 truncate">{value}</span>
-                </label>
+                <FilterOptionRow
+                  key={option.key}
+                  option={option}
+                  checked={selectedRef.current.has(option.key)}
+                  focused={focusIndex === index}
+                  top={index * rowHeight}
+                  height={rowHeight}
+                  onToggle={toggleValue}
+                />
               );
             })}
-            {!filteredValues.length && <p className="px-2 py-3 text-center text-slate-400">No values</p>}
+            {!filteredOptions.length && <p className="px-2 py-3 text-center text-slate-400">No values</p>}
           </div>
         </div>
       </div>
       <div className="mt-3 flex items-center justify-between gap-2">
-        <button type="button" onClick={() => onApply({ ...appliedFilter, values: [], text: '', search: '', includeBlanks: true, includeNonBlanks: true, operator: 'contains' })} className="rounded bg-slate-100 px-3 py-1.5 font-bold text-slate-700">Clear</button>
+        <button type="button" onClick={onClear} className="rounded bg-slate-100 px-3 py-1.5 font-bold text-slate-700">Clear</button>
         <div className="flex gap-2">
           <button type="button" onClick={onCancel} className="rounded bg-white px-3 py-1.5 font-bold text-slate-600 ring-1 ring-slate-200">Cancel</button>
           <button type="button" onClick={apply} className="rounded bg-blue-600 px-3 py-1.5 font-bold text-white">Apply</button>
@@ -3035,6 +3079,7 @@ function TableChecklistGrid({
   const [questionSectionFilter, setQuestionSectionFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [globalFilter, setGlobalFilter] = useState('');
+  const [globalSearchDraft, setGlobalSearchDraft] = useState('');
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>([]);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
@@ -3046,10 +3091,12 @@ function TableChecklistGrid({
   const [columnFilters, setColumnFilters] = useState<Record<string, GridColumnFilter>>({});
   const [openFilterColumnId, setOpenFilterColumnId] = useState('');
   const [filterMenuPosition, setFilterMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [tableScrollTop, setTableScrollTop] = useState(0);
+  const [tableViewportHeight, setTableViewportHeight] = useState(560);
   const saveTimersRef = useRef<Record<string, number>>({});
   const pendingSavePatchesRef = useRef<Record<string, Partial<TableChecklistRow>>>({});
   const importRef = useRef<HTMLInputElement | null>(null);
-  const columnHelper = createColumnHelper<TableChecklistRow>();
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
 
   const loadTable = async () => {
     setLoading(true);
@@ -3071,7 +3118,7 @@ function TableChecklistGrid({
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem(`auditie-checklist-filters:${area.id}`);
-      setColumnFilters(stored ? JSON.parse(stored) : {});
+      setColumnFilters(stored ? normalizeStoredColumnFilters(JSON.parse(stored)) : {});
     } catch {
       setColumnFilters({});
     }
@@ -3092,6 +3139,16 @@ function TableChecklistGrid({
   useEffect(() => () => {
     Object.values(saveTimersRef.current).forEach((timer) => window.clearTimeout(timer as number));
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setGlobalFilter(globalSearchDraft), 150);
+    return () => window.clearTimeout(timer);
+  }, [globalSearchDraft]);
+
+  useEffect(() => {
+    setTableScrollTop(0);
+    if (tableScrollRef.current) tableScrollRef.current.scrollTop = 0;
+  }, [globalFilter, columnFilters, sorting, viewMode]);
 
   const saveRow = async (row: TableChecklistRow, patch: Partial<TableChecklistRow>) => {
     const next = { ...row, ...patch, rowData: { ...row.rowData, ...(patch.rowData || {}) } };
@@ -3420,56 +3477,34 @@ function TableChecklistGrid({
     return String((row as any)[column.field || ''] ?? '');
   };
 
+  const getCellFilterKey = useCallback((row: TableChecklistRow, column: GridColumnDef) => normalizeFilterOption(getCellValue(row, column)).key, []);
+
   const isAutoNumberColumn = (column: GridColumnDef) => /^(sr\.?\s*no\.?|srno|serial|s\.?\s*no\.?)$/i.test(column.label.trim()) || /^(srNo|serialNo)$/i.test(column.id);
 
-  const blankFilter = (): GridColumnFilter => ({
-    search: '',
-    values: [],
-    includeBlanks: true,
-    includeNonBlanks: true,
-    operator: 'contains',
-    text: '',
-  });
-
-  const filterForColumn = (columnId: string) => columnFilters[columnId] || blankFilter();
+  const filterForColumn = (columnId: string) => columnFilters[columnId] || null;
 
   const isFilterActive = (filter?: GridColumnFilter) => {
     if (!filter) return false;
-    return !!filter.text.trim()
-      || filter.values.length > 0
-      || !filter.includeBlanks
-      || !filter.includeNonBlanks
-      || filter.operator === 'blank'
-      || filter.operator === 'notBlank';
+    return Array.isArray(filter.values);
   };
 
-  const textMatchesFilter = (value: string, filter: GridColumnFilter) => {
-    const raw = value || '';
-    const haystack = raw.toLowerCase();
-    const needle = filter.text.trim().toLowerCase();
-    const blank = !raw.trim();
-    if (filter.operator === 'blank') return blank;
-    if (filter.operator === 'notBlank') return !blank;
-    if (blank && !filter.includeBlanks) return false;
-    if (!blank && !filter.includeNonBlanks) return false;
-    if (filter.values.length && !filter.values.includes(raw.trim() || '(Blanks)')) return false;
-    if (!needle) return true;
-    if (filter.operator === 'notContains') return !haystack.includes(needle);
-    if (filter.operator === 'equals') return haystack === needle;
-    if (filter.operator === 'startsWith') return haystack.startsWith(needle);
-    if (filter.operator === 'endsWith') return haystack.endsWith(needle);
-    return haystack.includes(needle);
+  const uniqueColumnOptions = (column: GridColumnDef) => {
+    const optionMap = new Map<string, GridFilterOption>();
+    rows.forEach((row) => {
+      try {
+        const option = normalizeFilterOption(getCellValue(row, column));
+        if (!optionMap.has(option.key)) optionMap.set(option.key, option);
+      } catch {
+        // Malformed row data should never break the filter menu.
+      }
+    });
+    return Array.from(optionMap.values()).sort((a, b) => a.sortLabel.localeCompare(b.sortLabel, undefined, { numeric: true, sensitivity: 'base' }));
   };
 
-  const uniqueColumnValues = (column: GridColumnDef) => {
-    const values = Array.from(new Set<string>(rows.map((row) => getCellValue(row, column).trim() || '(Blanks)')));
-    return values.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
-  };
-
-  const uniqueColumnValuesById = useMemo(() => {
-    const next: Record<string, string[]> = {};
+  const uniqueColumnOptionsById = useMemo(() => {
+    const next: Record<string, GridFilterOption[]> = {};
     gridColumnDefs.forEach((column) => {
-      next[column.id] = uniqueColumnValues(column);
+      next[column.id] = uniqueColumnOptions(column);
     });
     return next;
   }, [rows, gridColumnDefs]);
@@ -3491,11 +3526,14 @@ function TableChecklistGrid({
   const visibleGridRows = useMemo(() => {
     const activeEntries = (Object.entries(columnFilters) as Array<[string, GridColumnFilter]>).filter(([, filter]) => isFilterActive(filter));
     if (!activeEntries.length) return rows;
+    const columnsById = new Map(gridColumnDefs.map((column) => [column.id, column]));
+    const selectedByColumn = new Map(activeEntries.map(([columnId, filter]) => [columnId, new Set(filter.values)]));
     return rows.filter((row) => activeEntries.every(([columnId, filter]) => {
-      const column = gridColumnDefs.find((item) => item.id === columnId);
-      return column ? textMatchesFilter(getCellValue(row, column), filter) : true;
+      const column = columnsById.get(columnId);
+      const selected = selectedByColumn.get(columnId);
+      return column && selected ? selected.has(getCellFilterKey(row, column)) : true;
     }));
-  }, [rows, columnFilters, gridColumnDefs]);
+  }, [rows, columnFilters, gridColumnDefs, getCellFilterKey]);
 
   const clearColumnFilter = (columnId: string) => {
     setColumnFilters((current) => {
@@ -3509,13 +3547,10 @@ function TableChecklistGrid({
     .filter(([, filter]) => isFilterActive(filter))
     .map(([columnId, filter]) => {
       const column = gridColumnDefs.find((item) => item.id === columnId);
-      const parts = [
-        filter.values.length ? filter.values.slice(0, 3).join(', ') + (filter.values.length > 3 ? ` +${filter.values.length - 3}` : '') : '',
-        filter.text.trim() ? `${filter.operator}: ${filter.text.trim()}` : '',
-        filter.operator === 'blank' ? 'Blanks' : '',
-        filter.operator === 'notBlank' ? 'Non-blanks' : '',
-      ].filter(Boolean);
-      return { columnId, label: column?.label || columnId, value: parts.join(' / ') || 'Filtered' };
+      const labelByKey = new Map((uniqueColumnOptionsById[columnId] || []).map((option) => [option.key, option.label]));
+      const labels = filter.values.map((value) => labelByKey.get(value) || normalizeFilterOption(value).label);
+      const value = labels.length ? labels.slice(0, 3).join(', ') + (labels.length > 3 ? ` +${labels.length - 3}` : '') : 'No values selected';
+      return { columnId, label: column?.label || columnId, value };
     });
 
   const patchForCell = (column: GridColumnDef, value: string): Partial<TableChecklistRow> => {
@@ -3629,8 +3664,8 @@ function TableChecklistGrid({
     );
   };
 
-  const columns = [
-    ...(template?.columns || []).map((definition) => columnHelper.accessor((row) => row.rowData?.[definition.columnKey] ?? '', {
+  const columns = useMemo(() => [
+    ...(template?.columns || []).map((definition) => tableChecklistColumnHelper.accessor((row) => row.rowData?.[definition.columnKey] ?? '', {
       id: definition.columnKey,
       header: definition.columnName,
       cell: ({ row, getValue }) => {
@@ -3640,29 +3675,29 @@ function TableChecklistGrid({
         return gridColumn ? renderGridCell(row.original, row.index, gridColumn) : null;
       },
     })),
-    columnHelper.accessor('status', {
+    tableChecklistColumnHelper.accessor('status', {
       header: 'Status',
       cell: ({ row, getValue }) => canEdit ? renderGridCell(row.original, row.index, gridColumnDefs.find((item) => item.id === 'status')!) : <span>{String(getValue())}</span>,
     }),
-    columnHelper.accessor('comments', {
+    tableChecklistColumnHelper.accessor('comments', {
       header: 'Comments',
       cell: ({ row, getValue }) => canEdit
         ? renderGridCell(row.original, row.index, gridColumnDefs.find((item) => item.id === 'comments')!)
         : <span className="block w-[240px] whitespace-pre-wrap break-words text-xs text-slate-600">{String(getValue() || '-')}</span>,
     }),
-    columnHelper.accessor('observation', {
+    tableChecklistColumnHelper.accessor('observation', {
       header: 'Observation',
       cell: ({ row, getValue }) => canEdit
         ? renderGridCell(row.original, row.index, gridColumnDefs.find((item) => item.id === 'observation')!)
         : <span className="block w-[260px] whitespace-pre-wrap break-words text-xs text-slate-600">{String(getValue() || '-')}</span>,
     }),
-    columnHelper.accessor('evidenceLink', {
+    tableChecklistColumnHelper.accessor('evidenceLink', {
       header: 'Repository Evidence Link',
       cell: ({ row, getValue }) => canEdit
         ? renderGridCell(row.original, row.index, gridColumnDefs.find((item) => item.id === 'evidenceLink')!)
         : <span className="block w-[260px] whitespace-pre-wrap break-words text-xs text-blue-700">{String(getValue() || '-')}</span>,
     }),
-    columnHelper.display({
+    tableChecklistColumnHelper.display({
       id: 'evidence',
       header: 'Evidence',
       cell: ({ row }) => (
@@ -3677,7 +3712,7 @@ function TableChecklistGrid({
         </div>
       ),
     }),
-    columnHelper.display({
+    tableChecklistColumnHelper.display({
       id: 'actions',
       header: '',
       cell: ({ row }) => canEdit ? (
@@ -3687,9 +3722,9 @@ function TableChecklistGrid({
         </div>
       ) : null,
     }),
-  ];
+  ], [template?.columns, canEdit, gridColumnDefs, renderGridCell, uploadEvidence, createObservation, deleteRow]);
 
-  const tableColumnIds = columns.map((column) => column.id || '');
+  const tableColumnIds = useMemo(() => columns.map((column) => column.id || ''), [columns]);
   const moveColumn = (columnId: string, direction: -1 | 1) => {
     const order = columnOrder.length ? columnOrder : tableColumnIds;
     const index = order.indexOf(columnId);
@@ -3748,6 +3783,17 @@ function TableChecklistGrid({
     getSortedRowModel: getSortedRowModel(),
   });
 
+  const tableRows = table.getRowModel().rows;
+  const shouldVirtualizeRows = tableRows.length > 200;
+  const virtualRowHeight = 112;
+  const virtualOverscan = 8;
+  const virtualStartIndex = shouldVirtualizeRows ? Math.max(0, Math.floor(tableScrollTop / virtualRowHeight) - virtualOverscan) : 0;
+  const virtualVisibleCount = shouldVirtualizeRows ? Math.ceil(tableViewportHeight / virtualRowHeight) + (virtualOverscan * 2) : tableRows.length;
+  const virtualEndIndex = shouldVirtualizeRows ? Math.min(tableRows.length, virtualStartIndex + virtualVisibleCount) : tableRows.length;
+  const renderedTableRows = shouldVirtualizeRows ? tableRows.slice(virtualStartIndex, virtualEndIndex) : tableRows;
+  const virtualTopSpacer = shouldVirtualizeRows ? virtualStartIndex * virtualRowHeight : 0;
+  const virtualBottomSpacer = shouldVirtualizeRows ? Math.max(0, (tableRows.length - virtualEndIndex) * virtualRowHeight) : 0;
+
   const questionBaseRows = table.getFilteredRowModel().rows;
   const questionIsoOptions = Array.from(new Set(rows.map(rowIsoClause).filter(Boolean))).sort();
   const questionSectionOptions = Array.from(new Set(rows.map(rowReviewSection).filter(Boolean))).sort();
@@ -3777,7 +3823,7 @@ function TableChecklistGrid({
             <button type="button" onClick={() => setViewMode('table')} className={cn('rounded px-3 py-1.5 text-xs font-bold', viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-slate-600')}>Table View</button>
             <button type="button" onClick={() => setViewMode('question')} className={cn('rounded px-3 py-1.5 text-xs font-bold', viewMode === 'question' ? 'bg-blue-600 text-white' : 'text-slate-600')}>Question View</button>
           </div>
-          {viewMode === 'table' && <input className={cn(inputClass, 'w-56')} value={globalFilter} onChange={(event) => setGlobalFilter(event.target.value)} placeholder="Search rows..." />}
+          {viewMode === 'table' && <input className={cn(inputClass, 'w-56')} value={globalSearchDraft} onChange={(event) => setGlobalSearchDraft(event.target.value)} placeholder="Search rows..." />}
           {viewMode === 'table' && <span className="inline-flex items-center rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">Showing {filteredRowCount} of {rows.length} rows</span>}
           {canEdit && <button onClick={addRow} className="rounded bg-slate-900 px-3 py-2 text-xs font-bold text-white"><Plus className="inline h-3.5 w-3.5" /> Add Row</button>}
           {canEdit && <label className="cursor-pointer rounded bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700"><Upload className="inline h-3.5 w-3.5" /> Import Excel<input ref={importRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(event) => importExcel(event.target.files)} /></label>}
@@ -3790,25 +3836,26 @@ function TableChecklistGrid({
         return gridColumn && filterMenuPosition ? (
           <FilterPopup
             column={gridColumn}
-            values={uniqueColumnValuesById[gridColumn.id] || []}
+            options={uniqueColumnOptionsById[gridColumn.id] || []}
             appliedFilter={filterForColumn(gridColumn.id)}
             position={filterMenuPosition}
-            onApply={(filter) => {
+            onApply={(filter, sortDesc) => {
               setColumnFilters((current) => {
                 const next = { ...current };
-                if (isFilterActive(filter)) next[gridColumn.id] = filter;
+                if (filter && isFilterActive(filter)) next[gridColumn.id] = filter;
                 else delete next[gridColumn.id];
                 return next;
               });
+              if (sortDesc !== null) setSorting([{ id: gridColumn.id, desc: sortDesc }]);
+              setOpenFilterColumnId('');
+              setFilterMenuPosition(null);
+            }}
+            onClear={() => {
+              clearColumnFilter(gridColumn.id);
               setOpenFilterColumnId('');
               setFilterMenuPosition(null);
             }}
             onCancel={() => {
-              setOpenFilterColumnId('');
-              setFilterMenuPosition(null);
-            }}
-            onSort={(desc) => {
-              setSorting([{ id: gridColumn.id, desc }]);
               setOpenFilterColumnId('');
               setFilterMenuPosition(null);
             }}
@@ -3845,7 +3892,7 @@ function TableChecklistGrid({
             <Metric label="Pending" value={pendingCount} />
           </div>
           <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[1fr_180px_220px_220px]">
-            <input className={inputClass} value={globalFilter} onChange={(event) => setGlobalFilter(event.target.value)} placeholder="Search controls..." />
+            <input className={inputClass} value={globalSearchDraft} onChange={(event) => setGlobalSearchDraft(event.target.value)} placeholder="Search controls..." />
             <select className={inputClass} value={questionStatusFilter} onChange={(event) => setQuestionStatusFilter(event.target.value)}>
               <option value="">All Statuses</option>
               {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
@@ -3973,7 +4020,14 @@ function TableChecklistGrid({
           );})}
         </div>
       ) : (
-      <div className="max-h-[68vh] overflow-auto">
+      <div
+        ref={tableScrollRef}
+        className="max-h-[68vh] overflow-auto"
+        onScroll={(event) => {
+          setTableScrollTop(event.currentTarget.scrollTop);
+          setTableViewportHeight(event.currentTarget.clientHeight || 560);
+        }}
+      >
         <table className="w-max min-w-full border-separate border-spacing-0 border border-slate-200 text-left">
           <thead className="sticky top-0 z-10 bg-slate-100 text-slate-700">
             {table.getHeaderGroups().map((headerGroup) => (
@@ -4029,15 +4083,29 @@ function TableChecklistGrid({
           <tbody>
             {loading ? (
               <tr><td colSpan={columns.length} className="px-4 py-10 text-center text-sm font-bold text-slate-500">Loading working paper...</td></tr>
-            ) : table.getRowModel().rows.length === 0 ? (
+            ) : tableRows.length === 0 ? (
               <tr><td colSpan={columns.length} className="px-4 py-10 text-center text-sm font-bold text-slate-500">No rows yet. Add a row or import Excel.</td></tr>
-            ) : table.getRowModel().rows.map((row) => (
-              <tr key={row.id} className="odd:bg-white even:bg-slate-50/70 hover:bg-blue-50/40">
-                {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="border-b border-r border-slate-200 px-3 py-3 align-top last:border-r-0">{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+            ) : (
+              <>
+                {virtualTopSpacer > 0 && (
+                  <tr aria-hidden="true">
+                    <td colSpan={columns.length} style={{ height: virtualTopSpacer }} className="border-0 p-0" />
+                  </tr>
+                )}
+                {renderedTableRows.map((row) => (
+                  <tr key={row.id} className="odd:bg-white even:bg-slate-50/70 hover:bg-blue-50/40">
+                    {row.getVisibleCells().map((cell) => (
+                      <td key={cell.id} className="border-b border-r border-slate-200 px-3 py-3 align-top last:border-r-0">{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+                    ))}
+                  </tr>
                 ))}
-              </tr>
-            ))}
+                {virtualBottomSpacer > 0 && (
+                  <tr aria-hidden="true">
+                    <td colSpan={columns.length} style={{ height: virtualBottomSpacer }} className="border-0 p-0" />
+                  </tr>
+                )}
+              </>
+            )}
           </tbody>
         </table>
       </div>

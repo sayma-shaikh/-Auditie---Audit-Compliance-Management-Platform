@@ -105,6 +105,9 @@ model Project {
 
   @@index([auditManagerId])
   @@index([createdBy])
+  @@index([status])
+  @@index([reportingDeadline])
+  @@index([createdAt])
 }
 
 model ProjectAreaAllocation {
@@ -147,6 +150,12 @@ model ProjectAreaAllocation {
   @@index([reviewerUserId])
   @@index([parentAreaId])
   @@index([workpaperKind])
+  @@index([status])
+  @@index([workStatus])
+  @@index([reviewStatus])
+  @@index([dueDate])
+  @@index([projectId, reviewStatus])
+  @@index([projectId, workStatus])
 }
 
 model ChecklistTemplate {
@@ -205,6 +214,10 @@ model ChecklistRow {
   @@index([auditAreaId])
   @@index([templateId])
   @@index([status])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([auditAreaId, status])
+  @@index([auditAreaId, sortOrder])
 }
 
 model RowEvidence {
@@ -224,6 +237,8 @@ model RowEvidence {
   @@index([rowId])
   @@index([reviewStatus])
   @@index([uploadedBy])
+  @@index([uploadedAt])
+  @@index([rowId, uploadedAt])
 }
 
 model Observation {
@@ -251,6 +266,8 @@ model Observation {
   @@index([auditAreaId])
   @@index([rowId])
   @@index([status])
+  @@index([createdAt])
+  @@index([projectId, status])
 }
 
 model CAPA {
@@ -275,6 +292,8 @@ model CAPA {
   @@index([projectId])
   @@index([auditAreaId])
   @@index([closureStatus])
+  @@index([targetDate])
+  @@index([projectId, closureStatus])
 }
 
 model ProjectStage {
@@ -375,6 +394,8 @@ model ProjectMilestone {
   @@index([projectId])
   @@index([ownerId])
   @@index([status])
+  @@index([targetDate])
+  @@index([projectId, status])
 }
 
 model ProjectMilestoneRepositoryLink {
@@ -796,6 +817,8 @@ model ProjectActivityLog {
   @@index([checklistItemId])
   @@index([action])
   @@index([actionType])
+  @@index([timestamp])
+  @@index([projectId, timestamp])
 }
 
 model UserProject {
@@ -834,6 +857,9 @@ model TaskAssignment {
 
   @@index([userId])
   @@index([taskId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([userId, status])
 }
 
 model UserPerformance {
@@ -1048,6 +1074,10 @@ model RepositoryItem {
 
   @@index([parentId])
   @@index([externalId])
+  @@index([createdById])
+  @@index([updatedById])
+  @@index([source])
+  @@index([type])
 }
 
 model RepositoryAudit {
@@ -1064,6 +1094,11 @@ model RepositoryAudit {
   details String?
 
   createdAt DateTime @default(now())
+
+  @@index([itemId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
 }
 
 model GoogleDriveToken {

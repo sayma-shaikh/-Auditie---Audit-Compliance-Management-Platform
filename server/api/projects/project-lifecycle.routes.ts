@@ -1235,7 +1235,7 @@ router.get('/project-areas/:areaId/table-checklist', authenticateJWT, async (req
   try {
     const area = await prisma.projectAreaAllocation.findUnique({
       where: { id: req.params.areaId },
-      include: { project: true, parentArea: true, observations: { include: { capa: true } }, checklistTemplate: { include: { columns: { orderBy: { sortOrder: 'asc' } } } } },
+      include: { project: true, checklistTemplate: { include: { columns: { orderBy: { sortOrder: 'asc' } } } } },
     });
     if (!area) return res.status(404).json({ message: 'Area allocation not found' });
     if (!canWorkArea(area, req) && !canReviewArea(area, req)) return res.status(403).json({ message: 'Access denied' });
@@ -1245,7 +1245,6 @@ router.get('/project-areas/:areaId/table-checklist', authenticateJWT, async (req
       where: { auditAreaId: area.id },
       include: {
         evidence: { orderBy: { uploadedAt: 'desc' } },
-        template: { include: { columns: { orderBy: { sortOrder: 'asc' } } } },
       },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
@@ -1270,7 +1269,6 @@ router.get('/project-areas/:areaId/table-checklist', authenticateJWT, async (req
         where: { auditAreaId: area.id },
         include: {
           evidence: { orderBy: { uploadedAt: 'desc' } },
-          template: { include: { columns: { orderBy: { sortOrder: 'asc' } } } },
         },
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
       });
@@ -1299,7 +1297,6 @@ router.get('/project-areas/:areaId/table-checklist', authenticateJWT, async (req
           where: { auditAreaId: area.id },
           include: {
             evidence: { orderBy: { uploadedAt: 'desc' } },
-            template: { include: { columns: { orderBy: { sortOrder: 'asc' } } } },
           },
           orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
         });

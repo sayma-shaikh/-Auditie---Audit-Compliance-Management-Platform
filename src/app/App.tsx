@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useRef, createContext, useContext } from 'react';
 import {
   BrowserRouter,
   Routes,
@@ -41,14 +41,61 @@ import {
   FolderUp,
   MoreVertical
 } from 'lucide-react';
-import { ProjectsPage, ProjectDetailsPage, AuditAreaWorkspacePage, PersonalWorkspacePage, MilestoneWorkspacePage } from '../features/projects/ProjectsPage';
 import { useOutsideClick } from '../hooks/useOutsideClick';
-import { TemplatesPage as TemplateAutomationPage } from '../features/templates/TemplatesPage';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
+const ProjectsPage = lazy(() => import('../features/projects/ProjectsPage').then((module) => ({ default: module.ProjectsPage })));
+const ProjectDetailsPage = lazy(() => import('../features/projects/ProjectsPage').then((module) => ({ default: module.ProjectDetailsPage })));
+const AuditAreaWorkspacePage = lazy(() => import('../features/projects/ProjectsPage').then((module) => ({ default: module.AuditAreaWorkspacePage })));
+const PersonalWorkspacePage = lazy(() => import('../features/projects/ProjectsPage').then((module) => ({ default: module.PersonalWorkspacePage })));
+const MilestoneWorkspacePage = lazy(() => import('../features/projects/ProjectsPage').then((module) => ({ default: module.MilestoneWorkspacePage })));
+const TemplateAutomationPage = lazy(() => import('../features/templates/TemplatesPage').then((module) => ({ default: module.TemplatesPage })));
+
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+function ModuleLoading() {
+  return (
+    <div className="flex min-h-[320px] items-center justify-center p-8">
+      <div className="rounded-lg border border-slate-200 bg-white px-5 py-4 text-sm font-bold text-slate-500 shadow-sm">
+        Loading module...
+      </div>
+    </div>
+  );
+}
+
+class ModuleErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  declare props: Readonly<{ children: React.ReactNode }>;
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('Module render failed:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="m-8 rounded-lg border border-rose-100 bg-rose-50 p-6 text-sm font-bold text-rose-700">
+          This module could not be loaded. Refresh the page and try again.
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function LazyModule({ children }: { children: React.ReactNode }) {
+  return (
+    <ModuleErrorBoundary>
+      <Suspense fallback={<ModuleLoading />}>{children}</Suspense>
+    </ModuleErrorBoundary>
+  );
 }
 
 // --- Auth Context & Service ---
@@ -3113,12 +3160,12 @@ export default function App() {
           <Route element={<MainLayout />}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/my-work" element={<PersonalWorkspacePage />} />
-            <Route path="/projects" element={<ProjectsPage />} />
-            <Route path="/projects/:id" element={<ProjectDetailsPage />} />
-            <Route path="/projects/:id/milestones/:milestoneId" element={<MilestoneWorkspacePage />} />
-            <Route path="/projects/:id/areas/:areaId" element={<AuditAreaWorkspacePage />} />
-            <Route path="/templates" element={<TemplateAutomationPage />} />
+            <Route path="/my-work" element={<LazyModule><PersonalWorkspacePage /></LazyModule>} />
+            <Route path="/projects" element={<LazyModule><ProjectsPage /></LazyModule>} />
+            <Route path="/projects/:id" element={<LazyModule><ProjectDetailsPage /></LazyModule>} />
+            <Route path="/projects/:id/milestones/:milestoneId" element={<LazyModule><MilestoneWorkspacePage /></LazyModule>} />
+            <Route path="/projects/:id/areas/:areaId" element={<LazyModule><AuditAreaWorkspacePage /></LazyModule>} />
+            <Route path="/templates" element={<LazyModule><TemplateAutomationPage /></LazyModule>} />
             <Route path="/repository" element={<RepositoryPage />} />
             <Route path="/repository/:folderId" element={<RepositoryPage />} />
             <Route path="/audit-logs" element={<AuditLogsPage />} />
