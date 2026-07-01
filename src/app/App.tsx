@@ -51,6 +51,7 @@ const AuditAreaWorkspacePage = lazy(() => import('../features/projects/ProjectsP
 const PersonalWorkspacePage = lazy(() => import('../features/projects/ProjectsPage').then((module) => ({ default: module.PersonalWorkspacePage })));
 const MilestoneWorkspacePage = lazy(() => import('../features/projects/ProjectsPage').then((module) => ({ default: module.MilestoneWorkspacePage })));
 const TemplateAutomationPage = lazy(() => import('../features/templates/TemplatesPage').then((module) => ({ default: module.TemplatesPage })));
+const AuditorDashboardPage = lazy(() => import('../features/dashboard/AuditorDashboardPage'));
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -513,10 +514,8 @@ function DashboardPage() {
 
   if (user?.role === 'AUDITOR') {
     return (
-      <PageContainer title="Dashboard" subtitle="Personal workspace">
-        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm font-bold text-slate-500">
-          The portfolio dashboard is available to Admins and project managers. Auditors should use My Work.
-        </div>
+      <PageContainer title="Auditor Workspace" subtitle="Personal execution dashboard">
+        <LazyModule><AuditorDashboardPage /></LazyModule>
       </PageContainer>
     );
   }
